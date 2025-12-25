@@ -6,6 +6,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { useAuth } from "@/hooks/useAuth";
 import { Crown, Check, Zap, Users, BarChart3, Lock, LogOut, LogIn } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Header } from "@/components/Header";
 
 export const SubscriptionPage = () => {
   const { user, signOut } = useAuth();
@@ -27,14 +28,19 @@ export const SubscriptionPage = () => {
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center">Loading subscription status...</div>
+      <div className="min-h-screen">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center">Loading subscription status...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="min-h-screen">
+      <Header />
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-4xl">
       <div className="flex justify-end mb-4">
         {user ? (
           <Button variant="outline" size="sm" onClick={signOut}>
@@ -236,6 +242,7 @@ export const SubscriptionPage = () => {
           </div>
         </CardContent>
       </Card>
+      </main>
     </div>
   );
 };

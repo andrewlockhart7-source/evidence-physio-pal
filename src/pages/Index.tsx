@@ -4,6 +4,7 @@ import { SearchSection } from "@/components/SearchSection"
 import { FeaturesSection } from "@/components/FeaturesSection"
 import { EvidenceIntegration } from "@/components/evidence/EvidenceIntegration"
 import { RealDataDashboard } from "@/components/dashboard/RealDataDashboard"
+import { ErrorBoundary } from "@/components/common/ErrorBoundary"
 import { useAuth } from "@/hooks/useAuth"
 import { useSubscription } from "@/hooks/useSubscription"
 import { useDataPopulation } from "@/hooks/useDataPopulation"
@@ -28,9 +29,10 @@ const Index = () => {
   const { isPopulating } = useDataPopulation();
 
   return (
-    <div className="min-h-screen">
-      <Header />
-      <main>
+    <ErrorBoundary>
+      <div className="min-h-screen">
+        <Header />
+        <main>
         <HeroSection />
         
         {/* Quick Start Guide - Only show for non-subscribed users */}
@@ -168,6 +170,7 @@ const Index = () => {
         <FeaturesSection />
       </main>
     </div>
+    </ErrorBoundary>
   );
 };
 

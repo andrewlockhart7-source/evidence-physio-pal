@@ -319,13 +319,20 @@ serve(async (req) => {
               key_findings: guideline.recommendations.join('; '),
               clinical_implications: `Professional guideline from ${guideline.organization} for ${guideline.condition} management.`,
               is_active: true,
-              doi: guideline.url, // Store URL in doi field as primary location
+              // Only store specific NICE guidance codes, not generic URLs
+              doi: (guideline.url && /nice\.org\.uk\/guidance\/(ng|cg|qs|ph)\d+/i.test(guideline.url)) 
+                ? guideline.url.match(/\/(ng\d+|cg\d+|qs\d+|ph\d+)/i)?.[1] 
+                : null,
               grade_assessment: {
                 source: guideline.organization,
                 type: 'Clinical Practice Guideline',
                 condition: guideline.condition,
                 recommendations: guideline.recommendations,
-                url: guideline.url
+                // Only store specific NICE guidance or CKS topic URLs
+                url: (guideline.url && (
+                  /nice\.org\.uk\/guidance\/(ng|cg|qs|ph)\d+/i.test(guideline.url) ||
+                  /cks\.nice\.org\.uk\/topics\//i.test(guideline.url)
+                )) ? guideline.url : `https://cks.nice.org.uk/#?q=${encodeURIComponent(guideline.condition)}`
               }
             });
 

@@ -17,6 +17,7 @@ import {
   Sparkles
 } from "lucide-react";
 import JSON5 from "json5";
+import { useAuth } from "@/hooks/useAuth";
 
 interface PopulationTask {
   id: string;
@@ -29,6 +30,7 @@ interface PopulationTask {
 }
 
 export const DataPopulator = () => {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<PopulationTask[]>([
     {
       id: 'generate-additional-conditions',
@@ -100,7 +102,7 @@ export const DataPopulator = () => {
             - prevalence_data: object (with prevalence statistics)
             
             Focus on conditions like COPD, Asthma, Pneumonia, Pulmonary Fibrosis, etc.
-            Return ONLY valid JSON array format.`
+            Return ONLY valid JSON array format, no markdown code blocks.`
           }],
           context: 'Generate respiratory physiotherapy conditions for clinical database',
           specialty: 'respiratory'
@@ -113,8 +115,18 @@ export const DataPopulator = () => {
 
       // Parse and insert conditions
       try {
-        const conditionsData = JSON.parse(data.response);
+        // Clean response - remove markdown code blocks if present
+        let cleanResponse = data.response.trim();
+        cleanResponse = cleanResponse.replace(/```json\n?/g, '').replace(/```\n?/g, '');
         
+        // Use JSON5 for more robust parsing
+        const conditionsData = JSON5.parse(cleanResponse);
+        
+        if (!Array.isArray(conditionsData)) {
+          throw new Error('Response is not an array');
+        }
+        
+        let insertedCount = 0;
         for (const condition of conditionsData) {
           const { error: insertError } = await supabase
             .from('conditions')
@@ -122,16 +134,19 @@ export const DataPopulator = () => {
           
           if (insertError) {
             console.error('Error inserting condition:', insertError);
+          } else {
+            insertedCount++;
           }
         }
 
         updateTaskStatus('generate-additional-conditions', { 
           status: 'completed', 
           progress: 100,
-          results: `Generated ${conditionsData.length} respiratory conditions`
+          results: `Generated ${insertedCount} respiratory conditions`
         });
-      } catch (parseError) {
-        throw new Error('Failed to parse AI response');
+      } catch (parseError: any) {
+        console.error('Parse error:', parseError, 'Response:', data.response);
+        throw new Error(`Failed to parse AI response: ${parseError.message}`);
       }
 
     } catch (error: any) {
@@ -143,85 +158,74 @@ export const DataPopulator = () => {
   };
 
   const populateDatabase = async (database: string, taskId: string) => {
-    updateTaskStatus(taskId, { status: 'running', progress: 0 });
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to populate database",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    updateTaskStatus(taskId, { status: 'running', progress: 5 });
 
     try {
-      // Get all conditions
+      // Gather a small set of conditions to build a combined query
       const { data: conditions, error: conditionsError } = await supabase
         .from('conditions')
-        .select('*');
+        .select('name')
+        .limit(5);
 
       if (conditionsError) throw conditionsError;
 
-      const totalConditions = conditions.length;
-      let processedConditions = 0;
+      const names = (conditions ?? []).map((c: any) => c.name).filter(Boolean);
+      const searchTerms = names.join(', ');
 
-      for (const condition of conditions) {
-        try {
-          let result;
-          
-          switch (database) {
-            case 'pubmed':
-              result = await supabase.functions.invoke('pubmed-integration', {
-                body: { 
-                  searchTerms: condition.name,
-                  maxResults: 5,
-                  dateRange: 'recent'
-                }
-              });
-              break;
-              
-            case 'cochrane':
-              result = await supabase.functions.invoke('cochrane-integration', {
-                body: { 
-                  searchTerms: condition.name,
-                  maxResults: 2  // Reduced from 3 to prevent timeouts
-                }
-              });
-              break;
-              
-            case 'pedro':
-              result = await supabase.functions.invoke('pedro-integration', {
-                body: { 
-                  searchTerms: condition.name,
-                  condition: condition.name,
-                  maxResults: 3
-                }
-              });
-              break;
-              
-            case 'nice':
-              result = await supabase.functions.invoke('guidelines-integration', {
-                body: { 
-                  searchTerms: condition.name,
-                  organization: 'nice'
-                }
-              });
-              break;
-          }
+      // Map task to evidence-sync source
+      const sourceMap: Record<string, string> = {
+        pubmed: 'pubmed',
+        cochrane: 'cochrane',
+        pedro: 'pedro',
+        nice: 'guidelines',
+      };
 
-          processedConditions++;
-          const progress = Math.round((processedConditions / totalConditions) * 100);
-          updateTaskStatus(taskId, { progress });
+      const src = sourceMap[database];
+      if (!src) throw new Error('Unknown evidence source');
 
-          // Small delay to prevent overwhelming the APIs
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-        } catch (error) {
-          console.error(`Error processing ${condition.name} for ${database}:`, error);
-        }
+      // Use the orchestrator function to avoid CF timeouts and heavy client work
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        updateTaskStatus(taskId, { progress: 20 });
+        const { data, error } = await supabase.functions.invoke('evidence-sync', {
+          body: {
+            searchTerms: searchTerms || 'physiotherapy physical therapy',
+            sources: [src],
+            maxResults: 12,
+          },
+          signal: controller.signal as any,
+        } as any);
+
+        if (error) throw error;
+        updateTaskStatus(taskId, { progress: 90 });
+
+        const count = Number(
+          data?.sources_processed?.[0]?.count ?? data?.total_articles ?? 0
+        );
+
+        updateTaskStatus(taskId, {
+          status: 'completed',
+          progress: 100,
+          results: `Fetched ${count} items from ${database}`,
+        });
+      } finally {
+        clearTimeout(timeout);
       }
-
-      updateTaskStatus(taskId, { 
-        status: 'completed', 
-        progress: 100,
-        results: `Processed ${processedConditions} conditions`
-      });
-
     } catch (error: any) {
-      updateTaskStatus(taskId, { 
-        status: 'error', 
-        error: error.message 
+      console.error(`[DataPopulator] ${database} failed`, error);
+      updateTaskStatus(taskId, {
+        status: 'error',
+        error: error?.message || 'Task failed',
       });
     }
   };
@@ -267,25 +271,45 @@ updateTaskStatus('generate-assessment-tools', {
   };
 
   const runAllTasks = async () => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to run population tasks",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsRunning(true);
     
     try {
-      // Run tasks sequentially to avoid overwhelming the system
+      // Run tasks sequentially with better error handling
       await generateAdditionalConditions();
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Delay between tasks
+      
       await populateDatabase('pubmed', 'populate-pubmed');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       await populateDatabase('cochrane', 'populate-cochrane');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       await populateDatabase('pedro', 'populate-pedro');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       await populateDatabase('nice', 'populate-nice');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       await generateAssessmentTools();
       
       toast({
         title: "Population Complete!",
-        description: "Successfully populated all condition modules with comprehensive data",
+        description: "Successfully populated condition modules with data",
       });
     } catch (error: any) {
+      console.error('Population error:', error);
       toast({
         title: "Population Error",
-        description: error.message,
+        description: error.message || "Some tasks may have failed. Check individual task status.",
         variant: "destructive",
       });
     } finally {
@@ -294,25 +318,52 @@ updateTaskStatus('generate-assessment-tools', {
   };
 
   const runSingleTask = async (taskId: string) => {
-    switch (taskId) {
-      case 'generate-additional-conditions':
-        await generateAdditionalConditions();
-        break;
-      case 'populate-pubmed':
-        await populateDatabase('pubmed', taskId);
-        break;
-      case 'populate-cochrane':
-        await populateDatabase('cochrane', taskId);
-        break;
-      case 'populate-pedro':
-        await populateDatabase('pedro', taskId);
-        break;
-      case 'populate-nice':
-        await populateDatabase('nice', taskId);
-        break;
-      case 'generate-assessment-tools':
-        await generateAssessmentTools();
-        break;
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please sign in to run tasks",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      toast({
+        title: "Task Started",
+        description: `Starting ${tasks.find(t => t.id === taskId)?.name}...`,
+      });
+
+      switch (taskId) {
+        case 'generate-additional-conditions':
+          await generateAdditionalConditions();
+          break;
+        case 'populate-pubmed':
+          await populateDatabase('pubmed', taskId);
+          break;
+        case 'populate-cochrane':
+          await populateDatabase('cochrane', taskId);
+          break;
+        case 'populate-pedro':
+          await populateDatabase('pedro', taskId);
+          break;
+        case 'populate-nice':
+          await populateDatabase('nice', taskId);
+          break;
+        case 'generate-assessment-tools':
+          await generateAssessmentTools();
+          break;
+      }
+
+      toast({
+        title: "Task Completed",
+        description: `Successfully completed ${tasks.find(t => t.id === taskId)?.name}`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Task Failed",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -350,10 +401,18 @@ updateTaskStatus('generate-assessment-tools', {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {!user ? (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 mb-4">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Please sign in to use data population features
+              </p>
+            </div>
+          ) : null}
+          
           <div className="flex gap-4">
             <Button 
               onClick={runAllTasks} 
-              disabled={isRunning}
+              disabled={isRunning || !user}
               className="flex items-center gap-2"
             >
               {isRunning ? (
@@ -395,7 +454,7 @@ updateTaskStatus('generate-assessment-tools', {
                 </span>
                 <Button
                   onClick={() => runSingleTask(task.id)}
-                  disabled={task.status === 'running' || isRunning}
+                  disabled={task.status === 'running' || isRunning || !user}
                   size="sm"
                   variant="outline"
                 >

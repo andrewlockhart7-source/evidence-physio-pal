@@ -30,7 +30,9 @@ export const SubscriptionProvider = ({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
 
   const checkSubscription = async () => {
+    console.log('checkSubscription called:', { user: !!user, session: !!session });
     if (!user || !session) {
+      console.log('No user or session, resetting subscription state');
       setSubscribed(false);
       setSubscriptionTier(null);
       setSubscriptionEnd(null);
@@ -50,6 +52,7 @@ export const SubscriptionProvider = ({ children }: { children: React.ReactNode }
 
       if (error) throw error;
 
+      console.log('Subscription check result:', data);
       setSubscribed(data.subscribed || false);
       setSubscriptionTier(data.subscription_tier || null);
       setSubscriptionEnd(data.subscription_end || null);

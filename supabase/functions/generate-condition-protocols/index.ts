@@ -79,25 +79,53 @@ serve(async (req) => {
 
     console.log('Starting comprehensive protocol generation...');
 
-    // Parse optional payload and fetch target condition(s)
+    // Parse optional payload and fetch target condition(s) or a paginated slice
     let conditionId: string | null = null;
+    let offset = 0;
+    let limit: number | null = null;
+    let totalCount: number | null = null;
     try {
       const payload = await req.json();
       conditionId = payload?.conditionId ?? null;
+      if (typeof payload?.offset === 'number') offset = Math.max(0, payload.offset);
+      if (typeof payload?.limit === 'number') limit = Math.max(1, payload.limit);
     } catch {
       // no body provided
     }
 
-    const { data: conditions, error: conditionsError } = conditionId
-      ? await supabase.from('conditions').select('*').eq('id', conditionId)
-      : await supabase.from('conditions').select('*');
+    let conditions: any[] | null = null;
+    let conditionsError: any = null;
+
+    if (conditionId) {
+      const { data, error } = await supabase.from('conditions').select('*').eq('id', conditionId);
+      conditions = data;
+      conditionsError = error;
+      totalCount = data?.length ?? 0;
+    } else if (limit !== null) {
+      // get total count for progress
+      const { count } = await supabase.from('conditions').select('*', { count: 'exact', head: true });
+      totalCount = count ?? null;
+
+      const { data, error } = await supabase
+        .from('conditions')
+        .select('*')
+        .order('name', { ascending: true })
+        .range(offset, offset + (limit as number) - 1);
+      conditions = data;
+      conditionsError = error;
+    } else {
+      const { data, error } = await supabase.from('conditions').select('*');
+      conditions = data;
+      conditionsError = error;
+      totalCount = data?.length ?? 0;
+    }
 
     if (conditionsError) {
       throw new Error(`Failed to fetch conditions: ${conditionsError.message}`);
     }
 
     const results = {
-      totalConditions: conditions?.length || 0,
+      totalConditions: totalCount ?? (conditions?.length || 0),
       processedConditions: 0,
       generatedProtocols: 0,
       errors: [] as string[]
@@ -332,10 +360,12 @@ Format your response as a JSON object with this exact structure:
 Base all recommendations strictly on the provided evidence. Include evidence levels when possible.`;
 
     let data: any | null = null;
-    let model = 'openai/gpt-5-mini';
+    let model = 'google/gemini-2.5-flash';
     let lastError = '';
 
     for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`Attempt ${attempt} for ${condition.name} using model: ${model}`);
+      
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -374,8 +404,8 @@ Base all recommendations strictly on the provided evidence. Include evidence lev
 
       // Try a fallback model on the next attempt
       if (attempt === 2) {
-        console.warn('Switching to fallback model google/gemini-2.5-flash');
-        model = 'google/gemini-2.5-flash';
+        console.warn('Switching to fallback model google/gemini-2.5-pro');
+        model = 'google/gemini-2.5-pro';
       }
 
       // Backoff before retrying

@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { getExternalEvidenceLink } from "@/utils/evidenceLinks";
+import { Header } from "@/components/Header";
 import {
   Calendar,
   TrendingUp,
@@ -394,8 +395,11 @@ export const PersonalizedDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="min-h-screen">
+      <Header />
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Welcome back, {user?.user_metadata?.first_name || 'Professional'}</h1>
           <p className="text-muted-foreground">Here's your personalized evidence and progress overview</p>
@@ -673,6 +677,8 @@ export const PersonalizedDashboard = () => {
           </div>
         </DialogContent>
       </Dialog>
+        </div>
+      </main>
     </div>
   );
 };

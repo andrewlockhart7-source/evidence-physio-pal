@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Shield, AlertTriangle, CheckCircle, XCircle, User, FileText } from "lucide-react";
+import { Header } from "@/components/Header";
 
 type HealthcareRole = 'physiotherapist' | 'doctor' | 'nurse' | 'occupational_therapist' | 'speech_therapist' | 'admin';
 
@@ -224,8 +225,11 @@ export const HealthcareProviderVerification = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
+    <div className="min-h-screen">
+      <Header />
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Healthcare Provider Verification</h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
           Secure patient data access through verified healthcare provider credentials
@@ -415,6 +419,8 @@ export const HealthcareProviderVerification = () => {
           </CardContent>
         </Card>
       )}
+        </div>
+      </main>
     </div>
   );
 };

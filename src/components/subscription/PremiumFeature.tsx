@@ -94,10 +94,11 @@ interface FreeTierBannerProps {
 }
 
 export const FreeTierBanner = ({ currentItem, totalItems, category }: FreeTierBannerProps) => {
-  const { hasAccess } = useSubscription();
+  const { subscribed, loading } = useSubscription();
   const { user } = useAuth();
 
-  if (hasAccess('basic')) return null;
+  // Hide banner if loading or if user is subscribed
+  if (loading || subscribed) return null;
 
   return (
     <Card className="mb-6 border-yellow-200 bg-yellow-50">

@@ -32,6 +32,7 @@ export const SubscriptionTiers = ({ onTierSelect }: SubscriptionTiersProps) => {
         'Evidence-based research',
         'Patient management (up to 50)',
         'Basic analytics',
+        'ZygoteBody Premium features',
         'Email support'
       ]
     },

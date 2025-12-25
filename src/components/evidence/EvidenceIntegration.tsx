@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 import { 
   Loader2, 
   Search, 
@@ -32,6 +33,7 @@ export const EvidenceIntegration = () => {
   const [syncResults, setSyncResults] = useState<SyncResult[]>([]);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const { toast } = useToast();
+  const { trackEvidenceView } = useActivityTracking();
 
   const sources = [
     {
@@ -75,6 +77,9 @@ export const EvidenceIntegration = () => {
       });
 
       if (error) throw error;
+
+      // Track evidence search
+      await trackEvidenceView(undefined, searchTerms);
 
       toast({
         title: "Sync Successful",

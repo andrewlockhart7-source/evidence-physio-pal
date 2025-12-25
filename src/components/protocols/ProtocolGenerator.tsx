@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
+import { useAuth } from "@/hooks/useAuth";
 import { 
   Brain, 
   Database, 
@@ -24,112 +26,116 @@ interface GenerationResults {
 }
 
 export const ProtocolGenerator = () => {
+  const { user } = useAuth();
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GenerationResults | null>(null);
   const [currentCondition, setCurrentCondition] = useState<string>("");
   const { toast } = useToast();
+  const { trackProtocolCreated } = useActivityTracking();
+
 
   const generateAllProtocols = async () => {
     setIsGenerating(true);
     setProgress(0);
     setResults(null);
-    setCurrentCondition("Initializing...");
+    setCurrentCondition("Preparing...");
 
     try {
-      // Fetch all conditions and process one-by-one to avoid Edge Function timeouts
-      const { data: conditions, error: condErr } = await supabase
+      // 1) Get total number of conditions to compute progress
+      const { count, error: countError } = await supabase
         .from('conditions')
-        .select('id, name')
-        .order('name');
+        .select('*', { count: 'exact', head: true });
 
-      if (condErr) {
-        console.error('Failed to fetch conditions:', condErr);
-        throw new Error('Could not load conditions from database');
+      if (countError) {
+        throw new Error(`Failed to count conditions: ${countError.message}`);
       }
 
-      const total = conditions?.length || 0;
-      let processed = 0;
-      let generated = 0;
-      const errors: string[] = [];
+      const total = Number(count ?? 0);
+      if (total === 0) {
+        setProgress(100);
+        setResults({ totalConditions: 0, processedConditions: 0, generatedProtocols: 0, errors: [] });
+        toast({ title: "No Conditions Found", description: "There are no conditions to process." });
+        return;
+      }
 
-      console.log(`Starting protocol generation for ${total} conditions`);
+      const BATCH_SIZE = 5; // keep requests fast to avoid timeouts
+      let processedTotal = 0;
+      let generatedTotal = 0;
+      const allErrors: string[] = [];
 
-      // Process sequentially to avoid AI rate limits; backend already batches evidence
-      const DISPLAY_BATCH_SIZE = 1;
-      for (let i = 0; i < conditions.length; i += DISPLAY_BATCH_SIZE) {
-        const batch = conditions.slice(i, Math.min(i + DISPLAY_BATCH_SIZE, conditions.length));
-        
-        // Process batch
-        const batchPromises = batch.map(async (condition) => {
-          setCurrentCondition(condition.name);
-          console.log(`[${i + batch.indexOf(condition) + 1}/${total}] Processing: ${condition.name}`);
-          
+      const totalBatches = Math.ceil(total / BATCH_SIZE);
+
+      for (let offset = 0, batchIndex = 0; offset < total; offset += BATCH_SIZE, batchIndex++) {
+        setCurrentCondition(`Batch ${batchIndex + 1} of ${totalBatches}`);
+
+        // Retry logic for network issues
+        let retryCount = 0;
+        const maxRetries = 3;
+        let success = false;
+
+        while (!success && retryCount < maxRetries) {
           try {
             const { data, error } = await supabase.functions.invoke('generate-condition-protocols', {
-              body: { conditionId: condition.id }
+              body: { offset, limit: BATCH_SIZE }
             });
-            
-            if (error) {
-              console.error(`Error for ${condition.name}:`, error);
-              errors.push(`${condition.name}: ${error.message || 'invoke error'}`);
-              return 0;
-            } else if (data?.error) {
-              console.error(`Data error for ${condition.name}:`, data.error);
-              errors.push(`${condition.name}: ${data.error}`);
-              return 0;
-            } else {
-              const genCount = data?.results?.generatedProtocols ?? 0;
-              const funcErrors = data?.results?.errors ?? [];
-              if (funcErrors.length) {
-                funcErrors.forEach((err: string) => errors.push(`${condition.name}: ${err}`));
-              }
-              if (genCount === 0 && funcErrors.length === 0) {
-                errors.push(`${condition.name}: No protocol generated`);
-              }
-              console.log(`✓ ${condition.name}: Generated ${genCount} protocol(s)`);
-              return genCount;
-            }
-          } catch (e: any) {
-            console.error(`Exception for ${condition.name}:`, e);
-            errors.push(`${condition.name}: ${e?.message || 'request failed'}`);
-            return 0;
-          }
-        });
 
-        // Wait for batch to complete
-        const batchResults = await Promise.all(batchPromises);
-        generated += batchResults.reduce((sum, count) => sum + count, 0);
-        processed += batch.length;
-        
-        const newProgress = Math.round((processed / total) * 100);
-        setProgress(newProgress);
-        console.log(`Batch ${Math.floor(i / DISPLAY_BATCH_SIZE) + 1} complete. Progress: ${processed}/${total} (${newProgress}%)`);
-        // Gentle pacing to avoid AI rate limits
-        await new Promise((res) => setTimeout(res, 400));
+            if (error) {
+              throw new Error(`Edge function failed: ${error.message || JSON.stringify(error)}`);
+            }
+            if (data?.error) {
+              throw new Error(data.error);
+            }
+
+            const raw = (data as any)?.results ?? {};
+            const processed = Number(raw?.processedConditions ?? 0);
+            const generated = Number(raw?.generatedProtocols ?? 0);
+            const errors = Array.isArray(raw?.errors) ? raw.errors : [];
+
+            processedTotal += processed;
+            generatedTotal += generated;
+            allErrors.push(...errors);
+
+            // Update progress based on total processed
+            setProgress(Math.min(99, Math.round((processedTotal / total) * 100)));
+            success = true;
+          } catch (err: any) {
+            retryCount++;
+            if (retryCount >= maxRetries) {
+              throw err;
+            }
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          }
+        }
       }
 
-      const finalResults = { 
-        totalConditions: total, 
-        processedConditions: processed, 
-        generatedProtocols: generated, 
-        errors 
+      const finalResults: GenerationResults = {
+        totalConditions: total,
+        processedConditions: processedTotal,
+        generatedProtocols: generatedTotal,
+        errors: allErrors,
       };
-      
-      setResults(finalResults);
-      setCurrentCondition("Completed");
-      
-      console.log('Generation complete:', finalResults);
 
-      if (errors.length === 0) {
+      setResults(finalResults);
+      setProgress(100);
+      setCurrentCondition("Completed");
+
+      if (user && generatedTotal > 0) {
+        for (let i = 0; i < generatedTotal; i++) {
+          await trackProtocolCreated();
+        }
+      }
+
+      if (allErrors.length === 0) {
         toast({
           title: "Protocol Generation Complete",
-          description: `Successfully generated ${generated} evidence-based protocols`,
+          description: `Successfully generated ${generatedTotal} evidence-based protocols`,
         });
       } else {
         toast({
           title: "Protocol Generation Finished with Errors",
-          description: `Generated ${generated} protocols. ${errors.length} condition(s) had errors.`,
+          description: `Generated ${generatedTotal}. ${allErrors.length} condition(s) had errors.`,
           variant: "destructive",
         });
       }
@@ -137,15 +143,29 @@ export const ProtocolGenerator = () => {
     } catch (error: any) {
       console.error('Protocol generation error:', error);
       setCurrentCondition("Failed");
+
+      let errorMessage = "Failed to generate protocols";
+      const msg = String(error?.message ?? "");
+      if (msg.includes("429")) {
+        errorMessage = "Rate limit reached. Please wait a moment and try again.";
+      } else if (msg.includes("402")) {
+        errorMessage = "Payment required for Lovable AI usage. Please add credits to your workspace.";
+      } else if (msg.includes("Failed to send a request") || msg.toLowerCase().includes("network")) {
+        errorMessage = "Network error or timeout. We now run in small batches — please try again.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       toast({
         title: "Generation Failed",
-        description: error.message || "Failed to generate protocols",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsGenerating(false);
     }
   };
+
 
   return (
     <div className="space-y-6">
@@ -224,7 +244,7 @@ export const ProtocolGenerator = () => {
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-5 w-5 text-orange-500" />
                       <div>
-                        <p className="text-2xl font-bold">{results.errors.length}</p>
+                        <p className="text-2xl font-bold">{results.errors?.length ?? 0}</p>
                         <p className="text-sm text-muted-foreground">Errors</p>
                       </div>
                     </div>
@@ -232,14 +252,14 @@ export const ProtocolGenerator = () => {
                 </Card>
               </div>
 
-              {results.errors.length > 0 && (
+              {(results.errors?.length ?? 0) > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-orange-600">Generation Errors</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {results.errors.map((error, index) => (
+                      {results.errors!.map((error, index) => (
                         <Badge key={index} variant="outline" className="text-orange-600">
                           {error}
                         </Badge>

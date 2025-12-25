@@ -332,11 +332,10 @@ export const CollaborationHub = () => {
       </div>
 
       <Tabs defaultValue="shared" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="shared">Shared Protocols</TabsTrigger>
           <TabsTrigger value="my-protocols">My Protocols</TabsTrigger>
           <TabsTrigger value="reviews">Peer Reviews</TabsTrigger>
-          <TabsTrigger value="public">Public Library</TabsTrigger>
         </TabsList>
 
         <TabsContent value="shared" className="space-y-4">
@@ -541,25 +540,6 @@ export const CollaborationHub = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="public" className="space-y-4">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold mb-2">Public Protocol Library</h2>
-            <p className="text-muted-foreground">
-              Browse validated protocols shared by the community.
-            </p>
-          </div>
-
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Globe className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-medium mb-2">Public Library</h3>
-              <p className="text-muted-foreground mb-4">
-                Public protocol sharing and discovery features will be available in the next update.
-              </p>
-              <Badge variant="outline">Coming Soon</Badge>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Share Protocol Dialog */}

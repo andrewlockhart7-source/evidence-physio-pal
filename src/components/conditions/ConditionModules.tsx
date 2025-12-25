@@ -84,6 +84,7 @@ export const ConditionModules = () => {
   const [selectedCondition, setSelectedCondition] = useState<Condition | null>(null);
   const [showAIChat, setShowAIChat] = useState(false);
   const [evidenceData, setEvidenceData] = useState<any[]>([]);
+  const [showEvidenceDialog, setShowEvidenceDialog] = useState(false);
   const { toast } = useToast();
   const { subscribed } = useSubscription();
 
@@ -308,6 +309,7 @@ export const ConditionModules = () => {
                 }
                 const evidence = await searchEvidence(condition.name);
                 setEvidenceData(evidence);
+                setShowEvidenceDialog(true);
                 toast({
                   title: "Evidence Search",
                   description: `Found ${evidence.length} studies for ${condition.name}`,
@@ -332,6 +334,7 @@ export const ConditionModules = () => {
                 }
                 const evidence = await searchExternalSources(condition.name);
                 setEvidenceData(evidence);
+                setShowEvidenceDialog(true);
               }}
             >
               <BookOpen className="h-4 w-4 mr-2" />
@@ -589,7 +592,7 @@ export const ConditionModules = () => {
       </Dialog>
 
       {/* Evidence Results Dialog */}
-      <Dialog open={evidenceData.length > 0} onOpenChange={() => setEvidenceData([])}>
+      <Dialog open={showEvidenceDialog} onOpenChange={setShowEvidenceDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

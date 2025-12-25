@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import {
   Activity
 } from "lucide-react";
 import { playTextToSpeech } from "@/utils/audioUtils";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -50,8 +51,10 @@ export const ChatGPTInterface = ({
   const [selectedSpecialty, setSelectedSpecialty] = useState(specialty);
   const [streamingResponse, setStreamingResponse] = useState("");
   const { toast } = useToast();
+  const { trackAIChatSession, trackCollaboration } = useActivityTracking();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const sessionStartRef = useRef<Date>(new Date());
 
   useEffect(() => {
     scrollToBottom();
@@ -102,6 +105,11 @@ How can I assist you today?`,
       } else {
         await handleNormalResponse(userMessage);
       }
+
+      // Track chat session after successful response
+      const durationMinutes = Math.round((new Date().getTime() - sessionStartRef.current.getTime()) / 60000);
+      await trackAIChatSession(messages.length + 1, durationMinutes);
+      await trackCollaboration();
     } catch (error: any) {
       console.error('Chat error:', error);
       toast({
@@ -134,48 +142,152 @@ How can I assist you today?`,
     };
     setMessages(prev => [...prev, assistantMessage]);
 
-    const { data, error } = await supabase.functions.invoke('ai-chat', {
-      body: {
-        messages: messagesForAPI,
-        context,
-        specialty: selectedSpecialty,
-        useStream: true
-      }
-    });
-
-    if (error) throw error;
-
-    // Handle streaming response
-    const eventSource = new EventSource(data);
-    eventSourceRef.current = eventSource;
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.content) {
-          setStreamingResponse(prev => prev + data.content);
-          setMessages(prev => {
-            const updated = [...prev];
-            const lastMessage = updated[updated.length - 1];
-            if (lastMessage && lastMessage.role === 'assistant') {
-              lastMessage.content += data.content;
-            }
-            return updated;
-          });
+    try {
+      // Use supabase.functions.invoke for streaming
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({
+            messages: messagesForAPI,
+            context,
+            specialty: selectedSpecialty,
+            useStream: true
+          })
         }
-      } catch (e) {
-        console.error('Error parsing streaming data:', e);
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
-    };
 
-    eventSource.onerror = () => {
-      eventSource.close();
-      setStreamingResponse("");
-    };
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-    eventSource.onopen = () => {
-      console.log('Streaming connection opened');
-    };
+      if (!reader) {
+        // Fallback to non-streaming if stream is unavailable
+        await handleNormalResponse(userMessage);
+        return;
+      }
+
+      let textBuffer = '';
+      const assistantMessageId = assistantMessage.id;
+      let streamDone = false;
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf('\n')) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith('\r')) line = line.slice(0, -1); // handle CRLF
+          if (line.startsWith(':') || line.trim() === '') continue; // SSE comments/keepalive
+
+          // Support both SSE (data: {...}) and raw JSON/text
+          let jsonStr = '';
+          if (line.startsWith('data: ')) {
+            jsonStr = line.slice(6).trim();
+          } else {
+            jsonStr = line.trim();
+          }
+
+          if (jsonStr === '[DONE]') {
+            streamDone = true;
+            break;
+          }
+
+          try {
+            const data = JSON.parse(jsonStr);
+            const content: string | undefined =
+              data.choices?.[0]?.delta?.content ?? // OpenAI chat stream
+              data.delta ?? // Realtime transcript delta or generic delta
+              data.content; // Fallback
+
+            if (content) {
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + content }
+                    : msg
+                )
+              );
+            }
+          } catch (e) {
+            // If it's not JSON, treat it as raw text chunk
+            if (jsonStr) {
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + jsonStr }
+                    : msg
+                )
+              );
+            } else {
+              // Incomplete JSON split across chunks: put it back and wait for more data
+              textBuffer = line + '\n' + textBuffer;
+              break;
+            }
+          }
+        }
+      }
+
+      // Final flush in case remaining buffered lines arrived without trailing newline
+      if (textBuffer.trim()) {
+        for (let raw of textBuffer.split('\n')) {
+          if (!raw) continue;
+          if (raw.endsWith('\r')) raw = raw.slice(0, -1);
+          if (raw.startsWith(':') || raw.trim() === '') continue;
+
+          let jsonStr = '';
+          if (raw.startsWith('data: ')) {
+            jsonStr = raw.slice(6).trim();
+          } else {
+            jsonStr = raw.trim();
+          }
+          if (jsonStr === '[DONE]') continue;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content: string | undefined =
+              parsed.choices?.[0]?.delta?.content ??
+              parsed.delta ??
+              parsed.content;
+            if (content) {
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + content }
+                    : msg
+                )
+              );
+            }
+          } catch {
+            // Treat leftover as plain text
+            if (jsonStr) {
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: msg.content + jsonStr }
+                    : msg
+                )
+              );
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Streaming error:', error);
+      throw error;
+    }
   };
 
   const handleNormalResponse = async (userMessage: ChatMessage) => {
@@ -339,10 +451,10 @@ How can I assist you today?`,
       </Card>
 
       {/* Chat Interface */}
-      <Card className="h-[600px] flex flex-col">
-        <CardContent className="flex-1 flex flex-col p-6 space-y-4">
+      <Card className="h-[600px] min-h-0 flex flex-col">
+        <CardContent className="flex-1 min-h-0 flex flex-col p-6 space-y-4">
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto space-y-4 border rounded-lg p-4 bg-gradient-to-b from-background to-muted/20">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 border rounded-lg p-4 bg-gradient-to-b from-background to-muted/20 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent">
             {messages.map((message) => (
               <div
                 key={message.id}

@@ -7,10 +7,13 @@ import { Brain, MessageSquare, Mic, Volume2, Heart, BarChart3, Bell, Users, Spar
 import { AISummarizer } from "@/components/ai/AISummarizer";
 import { ChatGPTInterface } from "@/components/ai/ChatGPTInterface";
 import { RealtimeChat } from "@/components/collaboration/RealtimeChat";
-import { AnatomyViewer3D } from "@/components/anatomy/AnatomyViewer3D";
-import { EnhancedAnalytics } from "@/components/analytics/EnhancedAnalytics";
+import { ZygoteBodyViewer } from "@/components/anatomy/ZygoteBodyViewer";
+import VoiceChat from "@/components/ai/VoiceChat";
+import { EnhancedAnalyticsDashboard } from "@/components/advanced/EnhancedAnalyticsDashboard";
+import { AddSessionForm } from "@/components/analytics/AddSessionForm";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
 import { StudyGroups } from "@/components/collaboration/StudyGroups";
+import { Header } from "@/components/Header";
 
 export const AdvancedFeatures = () => {
   const [activeFeature, setActiveFeature] = useState("ai-tools");
@@ -25,9 +28,9 @@ export const AdvancedFeatures = () => {
     },
     {
       id: "chatgpt",
-      label: "ChatGPT Assistant",
+      label: "AI Assistant",
       icon: <MessageSquare className="h-4 w-4" />,
-      description: "Advanced AI conversation with GPT-4"
+      description: "Advanced AI clinical guidance"
     },
     {
       id: "realtime-chat",
@@ -39,8 +42,7 @@ export const AdvancedFeatures = () => {
       id: "anatomy-3d",
       label: "3D Anatomy",
       icon: <Heart className="h-4 w-4" />,
-      description: "Interactive anatomical viewer",
-      badge: "Premium"
+      description: "Interactive anatomical viewer"
     },
     {
       id: "analytics",
@@ -64,8 +66,11 @@ export const AdvancedFeatures = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="min-h-screen">
+      <Header />
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          {/* Header */}
       <Card className="bg-gradient-to-r from-primary/5 to-accent/5 border-primary/20">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl">
@@ -129,54 +134,28 @@ export const AdvancedFeatures = () => {
           </div>
         )}
 
+        {activeFeature === "chatgpt" && (
+          <div className="space-y-6">
+            <ChatGPTInterface />
+          </div>
+        )}
+
         {activeFeature === "realtime-chat" && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-primary" />
-                  AI Clinical Assistant
-                </CardTitle>
-                <CardDescription>
-                  Real-time voice and text conversations with an AI physiotherapy expert
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <RealtimeChat />
+            <VoiceChat />
           </div>
         )}
 
         {activeFeature === "anatomy-3d" && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="h-5 w-5 text-primary" />
-                  Interactive 3D Anatomy
-                </CardTitle>
-                <CardDescription>
-                  Explore anatomical structures in 3D for enhanced treatment planning and patient education
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <AnatomyViewer3D />
+            <ZygoteBodyViewer />
           </div>
         )}
 
         {activeFeature === "analytics" && (
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-primary" />
-                  Advanced Practice Analytics
-                </CardTitle>
-                <CardDescription>
-                  Comprehensive insights into your practice performance, patient outcomes, and intervention effectiveness
-                </CardDescription>
-              </CardHeader>
-            </Card>
-            <EnhancedAnalytics />
+            <AddSessionForm />
+            <EnhancedAnalyticsDashboard />
           </div>
         )}
 
@@ -214,6 +193,8 @@ export const AdvancedFeatures = () => {
           </div>
         )}
       </div>
+        </div>
+      </main>
     </div>
   );
 };

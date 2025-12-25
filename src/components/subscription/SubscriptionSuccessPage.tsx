@@ -5,6 +5,7 @@ import { CheckCircle, Crown, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useToast } from "@/hooks/use-toast";
+import { Header } from "@/components/Header";
 
 export const SubscriptionSuccessPage = () => {
   const { checkSubscription } = useSubscription();
@@ -24,7 +25,9 @@ export const SubscriptionSuccessPage = () => {
   }, [checkSubscription, toast]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/50 flex items-center justify-center p-4">
+    <div className="min-h-screen">
+      <Header />
+      <div className="bg-gradient-to-br from-background to-muted/50 flex items-center justify-center p-4 min-h-[calc(100vh-4rem)]">
       <Card className="w-full max-w-md text-center">
         <CardHeader>
           <div className="mx-auto mb-4">
@@ -87,6 +90,7 @@ export const SubscriptionSuccessPage = () => {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

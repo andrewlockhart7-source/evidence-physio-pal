@@ -113,8 +113,8 @@ serve(async (req) => {
       subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
       logStep("Active subscription found", { subscriptionId: subscription.id, endDate: subscriptionEnd });
       
-      // Set subscription tier for PhysioEvidence Premium
-      subscriptionTier = "Premium";
+      // Set subscription tier - use 'basic' tier for all active subscriptions
+      subscriptionTier = "basic";
       logStep("Determined subscription tier", { subscriptionTier });
     } else {
       logStep("No active subscription found");

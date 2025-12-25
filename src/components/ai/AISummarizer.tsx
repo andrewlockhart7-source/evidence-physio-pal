@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Brain, Sparkles, FileText, HelpCircle, Volume2, Loader2 } from "lucide-react";
 import { playTextToSpeech } from "@/utils/audioUtils";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 interface AISummarizerProps {
   condition?: string;
@@ -29,6 +30,7 @@ export const AISummarizer = ({ condition }: AISummarizerProps) => {
     clinical_questions: boolean;
   }>({ summary: false, recommendations: false, clinical_questions: false });
   const { toast } = useToast();
+  const { trackAISummarizer, trackEvidenceView } = useActivityTracking();
 
   const handleAnalyze = async (requestType: 'summary' | 'recommendations' | 'clinical_questions') => {
     if (!evidenceText.trim()) {
@@ -55,6 +57,10 @@ export const AISummarizer = ({ condition }: AISummarizerProps) => {
 
       setResults(prev => ({ ...prev, [requestType]: data.response }));
       setActiveTab(requestType);
+
+      // Track AI summarizer usage
+      await trackAISummarizer(1);
+      await trackEvidenceView();
 
       toast({
         title: "Analysis complete",
@@ -122,14 +128,29 @@ export const AISummarizer = ({ condition }: AISummarizerProps) => {
                 <SelectValue placeholder="Select a condition..." />
               </SelectTrigger>
               <SelectContent>
+                {/* Musculoskeletal Conditions */}
                 <SelectItem value="low-back-pain">Low Back Pain</SelectItem>
+                <SelectItem value="neck-pain">Neck Pain</SelectItem>
                 <SelectItem value="knee-osteoarthritis">Knee Osteoarthritis</SelectItem>
                 <SelectItem value="shoulder-impingement">Shoulder Impingement</SelectItem>
-                <SelectItem value="neck-pain">Neck Pain</SelectItem>
-                <SelectItem value="ankle-sprain">Ankle Sprain</SelectItem>
-                <SelectItem value="copd">COPD</SelectItem>
+                <SelectItem value="tennis-elbow">Tennis Elbow</SelectItem>
+                <SelectItem value="plantar-fasciitis">Plantar Fasciitis</SelectItem>
+                
+                {/* Neurological Conditions */}
                 <SelectItem value="stroke">Stroke</SelectItem>
-                <SelectItem value="parkinsons">Parkinson's Disease</SelectItem>
+                <SelectItem value="multiple-sclerosis">Multiple Sclerosis</SelectItem>
+                <SelectItem value="parkinsons-disease">Parkinson's Disease</SelectItem>
+                <SelectItem value="spinal-cord-injury">Spinal Cord Injury</SelectItem>
+                <SelectItem value="traumatic-brain-injury">Traumatic Brain Injury</SelectItem>
+                <SelectItem value="peripheral-neuropathy">Peripheral Neuropathy</SelectItem>
+                
+                {/* Respiratory Conditions */}
+                <SelectItem value="copd">COPD</SelectItem>
+                <SelectItem value="asthma">Asthma</SelectItem>
+                <SelectItem value="pneumonia">Pneumonia</SelectItem>
+                <SelectItem value="pulmonary-fibrosis">Pulmonary Fibrosis</SelectItem>
+                <SelectItem value="cystic-fibrosis">Cystic Fibrosis</SelectItem>
+                <SelectItem value="sleep-apnea">Sleep Apnea</SelectItem>
               </SelectContent>
             </Select>
           </div>

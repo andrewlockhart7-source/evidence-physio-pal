@@ -23,7 +23,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Set up auth state listener FIRST to avoid missing events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        console.log('useAuth: Auth state changed', { event, session: !!session });
+        console.log('useAuth: Auth state changed', { event, session: !!session, userId: session?.user?.id });
 
         setSession(session);
         setUser(session?.user ?? null);
@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
-      console.log('useAuth: Initial session check', { session: !!session, error });
+      console.log('useAuth: Initial session check', { session: !!session, userId: session?.user?.id, error });
 
       if (error) {
         console.error('useAuth: Session check error:', error);

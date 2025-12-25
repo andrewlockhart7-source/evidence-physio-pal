@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Clock, Award, Plus, FileText, Calendar, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 interface CPDActivity {
   id: string;
@@ -31,6 +32,7 @@ interface CPDActivity {
 export const CPDTracker = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { trackCPDActivity } = useActivityTracking();
   const [activities, setActivities] = useState<CPDActivity[]>([]);
   const [totalHours, setTotalHours] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -113,6 +115,9 @@ export const CPDTracker = () => {
         });
 
       if (error) throw error;
+
+      // Track CPD activity
+      await trackCPDActivity();
 
       toast({
         title: "Success",

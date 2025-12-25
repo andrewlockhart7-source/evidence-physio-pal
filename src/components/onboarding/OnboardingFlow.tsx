@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
+import { Header } from "@/components/Header"
 
 const steps = [
   {
@@ -92,7 +93,9 @@ export const OnboardingFlow = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-neutral-50 flex items-center justify-center p-4">
+    <div className="min-h-screen">
+      <Header />
+      <div className="bg-gradient-to-br from-background to-neutral-50 flex items-center justify-center p-4 min-h-[calc(100vh-4rem)]">
       <div className="w-full max-w-2xl">
         {/* Progress Bar */}
         <div className="mb-8">
@@ -206,6 +209,7 @@ export const OnboardingFlow = () => {
             </div>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   )

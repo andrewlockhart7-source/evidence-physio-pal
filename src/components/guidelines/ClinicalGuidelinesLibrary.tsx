@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { getExternalEvidenceLink, getEvidenceSourceLinks } from "@/utils/evidenceLinks";
 import { 
   FileText,
   ExternalLink,
@@ -18,8 +19,11 @@ import {
   Users,
   CheckCircle,
   AlertCircle,
-  Star
+  Star,
+  ChevronDown,
+  Wrench
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 
 interface ClinicalGuideline {
   id: string;
@@ -37,6 +41,10 @@ interface ClinicalGuideline {
   key_recommendations: string[];
   implementation_notes: string;
   tags: string[];
+  doi?: string | null;
+  pmid?: string | null;
+  journal?: string | null;
+  grade_assessment?: any;
 }
 
 export const ClinicalGuidelinesLibrary = () => {
@@ -44,6 +52,11 @@ export const ClinicalGuidelinesLibrary = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedOrganization, setSelectedOrganization] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearchTerm(searchTerm), 250);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
   const [loading, setLoading] = useState(false);
   const [selectedGuideline, setSelectedGuideline] = useState<ClinicalGuideline | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -67,9 +80,21 @@ export const ClinicalGuidelinesLibrary = () => {
       // Transform the data to match our interface
       const transformedGuidelines: ClinicalGuideline[] = (data || []).map(item => {
         const gradeAssessment = item.grade_assessment as any;
-        // Try multiple sources for the URL: grade_assessment.url, doi, or fallback
-        const guidelineUrl = gradeAssessment?.url || item.doi || 
-          (item.title?.toLowerCase().includes('nice') ? 'https://www.nice.org.uk/guidance' : '#');
+        // Use the evidenceLinks utility to properly resolve the URL (safe)
+        let guidelineUrl = '#';
+        try {
+          const resolved = getExternalEvidenceLink({
+            title: item.title,
+            journal: item.journal,
+            doi: item.doi,
+            pmid: item.pmid,
+            tags: item.tags,
+            grade_assessment: gradeAssessment
+          });
+          if (resolved) guidelineUrl = resolved;
+        } catch {
+          guidelineUrl = '#';
+        }
         
         return {
           id: item.id,
@@ -86,7 +111,11 @@ export const ClinicalGuidelinesLibrary = () => {
           clinical_questions: [],
           key_recommendations: gradeAssessment?.recommendations || item.key_findings?.split(';') || [],
           implementation_notes: item.clinical_implications || '',
-          tags: item.tags || []
+          tags: item.tags || [],
+          doi: item.doi,
+          pmid: item.pmid,
+          journal: item.journal,
+          grade_assessment: gradeAssessment
         };
       });
 
@@ -120,6 +149,31 @@ export const ClinicalGuidelinesLibrary = () => {
     return 'General';
   };
 
+  const cleanupInvalidGuidelines = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.functions.invoke('cleanup-invalid-guidelines');
+
+      if (error) throw error;
+
+      toast({
+        title: "Cleanup Complete",
+        description: data.message || "Successfully cleaned up invalid guidelines",
+      });
+
+      // Refresh the guidelines list
+      await fetchGuidelines();
+    } catch (error: any) {
+      toast({
+        title: "Error during cleanup",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fixGuidelineUrls = async () => {
     try {
       setLoading(true);
@@ -137,6 +191,31 @@ export const ClinicalGuidelinesLibrary = () => {
     } catch (error: any) {
       toast({
         title: "Error fixing URLs",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const repairGuidelineLinks = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.functions.invoke('repair-guideline-links');
+
+      if (error) throw error;
+
+      toast({
+        title: "Links Repaired",
+        description: data.message || "Successfully repaired mismatched guideline links",
+      });
+
+      // Refresh the guidelines list
+      await fetchGuidelines();
+    } catch (error: any) {
+      toast({
+        title: "Error repairing links",
         description: error.message,
         variant: "destructive",
       });
@@ -163,22 +242,35 @@ export const ClinicalGuidelinesLibrary = () => {
 
       toast({
         title: "Fetching Guidelines",
-        description: `Searching for ${selectedCategory === 'all' ? 'general' : selectedCategory} guidelines...`,
+        description: `Searching multiple databases for ${selectedCategory === 'all' ? 'general' : selectedCategory} guidelines...`,
       });
 
-      const { data, error } = await supabase.functions.invoke('guidelines-integration', {
-        body: {
-          searchTerms,
-          organization: 'NICE',
-          condition: searchTerms
-        }
-      });
+      // Call all database integrations in parallel
+      const integrations = [
+        supabase.functions.invoke('guidelines-integration', {
+          body: { searchTerms, organization: 'NICE', condition: searchTerms }
+        }),
+        supabase.functions.invoke('trip-database-integration', {
+          body: { searchTerms, condition: searchTerms }
+        }),
+        supabase.functions.invoke('epistemonikos-integration', {
+          body: { searchTerms, condition: searchTerms }
+        }),
+        supabase.functions.invoke('who-guidelines-integration', {
+          body: { searchTerms, condition: searchTerms }
+        })
+      ];
 
-      if (error) throw error;
+      const results = await Promise.allSettled(integrations);
+      
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const failedCount = results.filter(r => r.status === 'rejected').length;
+
+      console.log('[FETCH-GUIDELINES] Results:', { successCount, failedCount, results });
 
       toast({
         title: "Guidelines Updated",
-        description: data.message || `Successfully processed ${data.guidelines?.length || 0} guidelines`,
+        description: `Successfully fetched from ${successCount} database${successCount !== 1 ? 's' : ''}${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
       });
 
       // Refresh the guidelines list
@@ -186,7 +278,7 @@ export const ClinicalGuidelinesLibrary = () => {
     } catch (error: any) {
       toast({
         title: "Error fetching guidelines",
-        description: error.message || "Failed to fetch NICE guidelines. Please try again.",
+        description: error.message || "Failed to fetch guidelines. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -215,10 +307,26 @@ export const ClinicalGuidelinesLibrary = () => {
   const filteredGuidelines = guidelines.filter(guideline => {
     const matchesCategory = selectedCategory === 'all' || guideline.condition_category === selectedCategory;
     const matchesOrganization = selectedOrganization === 'all' || guideline.organization === selectedOrganization;
-    const matchesSearch = guideline.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         guideline.organization.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         guideline.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesCategory && matchesOrganization && matchesSearch;
+    const q = debouncedSearchTerm.toLowerCase();
+    const matchesSearch = !q || guideline.title.toLowerCase().includes(q) ||
+                         guideline.organization.toLowerCase().includes(q) ||
+                         guideline.tags?.some(tag => tag.toLowerCase().includes(q));
+    
+    // Filter out guidelines that only have search URLs (not specific pages)
+    // We rely on evidenceLinks.ts to generate proper links dynamically
+    const sources = getEvidenceSourceLinks({
+      title: guideline.title,
+      journal: guideline.journal,
+      doi: guideline.doi,
+      pmid: guideline.pmid,
+      tags: guideline.tags,
+      grade_assessment: guideline.grade_assessment
+    });
+    
+    // Keep only if we can generate at least one valid source link
+    const hasValidSource = sources.length > 0;
+    
+    return matchesCategory && matchesOrganization && matchesSearch && hasValidSource;
   });
 
   const categories = [...new Set(guidelines.map(g => g.condition_category))];
@@ -341,19 +449,73 @@ export const ClinicalGuidelinesLibrary = () => {
             <FileText className="h-4 w-4 mr-2" />
             View Details
           </Button>
-          {guideline.guideline_url && guideline.guideline_url !== '#' && (
-            <Button 
-              variant="default" 
-              size="sm" 
-              className="flex-1"
-              onClick={() => {
-                window.open(guideline.guideline_url, '_blank', 'noopener,noreferrer');
-              }}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Open Guide
-            </Button>
-          )}
+          {(() => {
+            try {
+              const sources = getEvidenceSourceLinks({
+                title: guideline.title,
+                journal: guideline.journal,
+                doi: guideline.doi,
+                pmid: guideline.pmid,
+                tags: guideline.tags,
+                grade_assessment: guideline.grade_assessment
+              });
+              
+              const primarySource = sources[0];
+              const additionalSources = sources.slice(1);
+              
+              if (!primarySource) return null;
+            
+            return (
+              <div className="flex gap-1 flex-1">
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => window.open(primarySource.url, '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  {primarySource.label}
+                </Button>
+                {additionalSources.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="default" size="sm" className="px-2">
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="z-50 bg-background border shadow-lg">
+                      <DropdownMenuLabel>More Sources</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {additionalSources.map((source, idx) => (
+                        <DropdownMenuItem 
+                          key={idx}
+                          onClick={() => window.open(source.url, '_blank', 'noopener,noreferrer')}
+                          className="cursor-pointer"
+                        >
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          {source.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            );
+            } catch (error) {
+              console.error('[GUIDELINE-CARD] Error getting evidence sources:', error);
+              return (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => window.open(`https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(guideline.title)}`, '_blank', 'noopener,noreferrer')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Search PubMed
+                </Button>
+              );
+            }
+          })()}
         </div>
       </CardContent>
     </Card>
@@ -422,12 +584,19 @@ export const ClinicalGuidelinesLibrary = () => {
               Showing {filteredGuidelines.length} of {guidelines.length} guidelines
             </p>
             <div className="flex gap-2">
+              <Button onClick={cleanupInvalidGuidelines} variant="outline" size="sm" disabled={loading}>
+                Clean Up Invalid
+              </Button>
               <Button onClick={fixGuidelineUrls} variant="outline" size="sm" disabled={loading}>
                 Fix URLs
               </Button>
+              <Button onClick={repairGuidelineLinks} variant="outline" size="sm" disabled={loading}>
+                <Wrench className="h-4 w-4 mr-2" />
+                Repair Links
+              </Button>
               <Button onClick={fetchMoreGuidelines} variant="default" disabled={loading}>
                 <Star className="h-4 w-4 mr-2" />
-                {loading ? 'Fetching...' : 'Fetch NICE Guidelines'}
+                {loading ? 'Fetching...' : 'Fetch from All Databases'}
               </Button>
             </div>
           </div>

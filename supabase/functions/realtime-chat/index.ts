@@ -56,6 +56,16 @@ serve(async (req) => {
           const data = JSON.parse(event.data);
           logStep("Received from OpenAI", { type: data.type });
 
+          // Log full error details if it's an error event
+          if (data.type === 'error') {
+            logStep("OpenAI Error Details", { 
+              error: data.error,
+              code: data.error?.code,
+              message: data.error?.message,
+              fullEvent: data
+            });
+          }
+
           // Handle session.created event
           if (data.type === 'session.created' && !sessionInitialized) {
             logStep("Session created, sending session update");
@@ -64,38 +74,7 @@ serve(async (req) => {
             const sessionUpdate = {
               type: "session.update",
               session: {
-                modalities: ["text", "audio"],
-                instructions: "You are an expert physiotherapist assistant helping with clinical discussions. Provide evidence-based insights, treatment recommendations, and answer questions about physiotherapy practice. Be concise but thorough.",
-                voice: "alloy",
-                input_audio_format: "pcm16",
-                output_audio_format: "pcm16",
-                input_audio_transcription: {
-                  model: "whisper-1"
-                },
-                turn_detection: {
-                  type: "server_vad",
-                  threshold: 0.5,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 1000
-                },
-                tools: [
-                  {
-                    type: "function",
-                    name: "search_evidence",
-                    description: "Search for physiotherapy evidence and research",
-                    parameters: {
-                      type: "object",
-                      properties: {
-                        condition: { type: "string" },
-                        intervention: { type: "string" }
-                      },
-                      required: ["condition"]
-                    }
-                  }
-                ],
-                tool_choice: "auto",
-                temperature: 0.7,
-                max_response_output_tokens: 1000
+                type: "realtime"
               }
             };
             

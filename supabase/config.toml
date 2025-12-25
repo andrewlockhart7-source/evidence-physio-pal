@@ -33,3 +33,15 @@ verify_jwt = false
 
 [functions.send-contact-email]
 verify_jwt = false
+
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.seed-anatomy-models]
+verify_jwt = false
+
+[functions.realtime-chat]
+verify_jwt = false
+
+[functions.generate-protocol-json]
+verify_jwt = false

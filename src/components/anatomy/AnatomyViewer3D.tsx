@@ -11,6 +11,7 @@ import {
   Float,
   Html,
   useTexture,
+  useGLTF,
   Torus,
   Cone
 } from "@react-three/drei";
@@ -37,6 +38,8 @@ import {
   Search
 } from "lucide-react";
 import * as THREE from "three";
+import { supabase } from "@/integrations/supabase/client";
+import { useSubscription } from "@/hooks/useSubscription";
 
 interface AnatomyPart {
   id: string;
@@ -435,6 +438,116 @@ const shoulderAnatomy: AnatomyPart[] = [
   }
 ];
 
+// Head/Skull Anatomy
+const headAnatomy: AnatomyPart[] = [
+  { id: 'skull', name: 'Skull', position: [0, 0.5, 0], color: '#E8E8E8', type: 'bone', 
+    info: 'Cranium protecting the brain', visible: true, opacity: 0.9, size: [0.8, 1, 0.7] },
+  { id: 'mandible', name: 'Mandible (Jaw)', position: [0, -0.5, 0.1], color: '#D0D0D0', type: 'bone',
+    info: 'Lower jaw bone for chewing', visible: true, opacity: 0.9, size: [0.6, 0.3, 0.4] },
+  { id: 'temporal', name: 'Temporal Bone', position: [0.6, 0.2, 0], color: '#C8C8C8', type: 'bone',
+    info: 'Skull bone housing ear structures', visible: true, opacity: 0.9, size: [0.3, 0.4, 0.3] },
+  { id: 'masseter', name: 'Masseter Muscle', position: [0.4, -0.3, 0], color: '#E74C3C', type: 'muscle',
+    info: 'Primary chewing muscle', visible: true, opacity: 0.7, size: [0.2, 0.3, 0.2] },
+  { id: 'temporalis', name: 'Temporalis', position: [0.5, 0.3, -0.1], color: '#C0392B', type: 'muscle',
+    info: 'Powerful jaw elevator muscle', visible: true, opacity: 0.7, size: [0.25, 0.4, 0.15] }
+];
+
+// Pelvis Anatomy
+const pelvisAnatomy: AnatomyPart[] = [
+  { id: 'ilium', name: 'Ilium', position: [0.6, 0.5, 0], color: '#3498DB', type: 'bone',
+    info: 'Upper part of hip bone', visible: true, opacity: 0.9, size: [0.5, 0.6, 0.3] },
+  { id: 'sacrum_pelvis', name: 'Sacrum', position: [0, 0, -0.2], color: '#2980B9', type: 'bone',
+    info: 'Fused vertebrae connecting spine to pelvis', visible: true, opacity: 0.9, size: [0.7, 0.8, 0.4] },
+  { id: 'pubis', name: 'Pubis', position: [0.3, -0.5, 0.2], color: '#5DADE2', type: 'bone',
+    info: 'Front portion of hip bone', visible: true, opacity: 0.9, size: [0.4, 0.3, 0.2] },
+  { id: 'ischium', name: 'Ischium', position: [0.4, -0.6, -0.1], color: '#85C1E9', type: 'bone',
+    info: 'Lower and back part of hip bone', visible: true, opacity: 0.9, size: [0.35, 0.4, 0.25] },
+  { id: 'gluteus_maximus', name: 'Gluteus Maximus', position: [-0.5, 0, -0.5], color: '#E74C3C', type: 'muscle',
+    info: 'Largest buttock muscle for hip extension', visible: true, opacity: 0.7, size: [0.6, 0.7, 0.4] },
+  { id: 'iliopsoas', name: 'Iliopsoas', position: [0.3, 0.2, 0.1], color: '#C0392B', type: 'muscle',
+    info: 'Hip flexor muscle group', visible: true, opacity: 0.7, size: [0.3, 0.5, 0.2] }
+];
+
+// Hand/Wrist Anatomy
+const handAnatomy: AnatomyPart[] = [
+  { id: 'radius', name: 'Radius', position: [-0.3, 0.8, 0], color: '#3498DB', type: 'bone',
+    info: 'Lateral forearm bone', visible: true, opacity: 0.9, size: [0.15, 1.2, 0.15] },
+  { id: 'ulna', name: 'Ulna', position: [0.3, 0.8, 0], color: '#2980B9', type: 'bone',
+    info: 'Medial forearm bone', visible: true, opacity: 0.9, size: [0.15, 1.3, 0.15] },
+  { id: 'carpals', name: 'Carpal Bones', position: [0, 0, 0], color: '#5DADE2', type: 'bone',
+    info: 'Eight small wrist bones', visible: true, opacity: 0.9, size: [0.5, 0.3, 0.3] },
+  { id: 'metacarpals', name: 'Metacarpals', position: [0, -0.5, 0], color: '#85C1E9', type: 'bone',
+    info: 'Five bones in palm of hand', visible: true, opacity: 0.9, size: [0.6, 0.4, 0.15] },
+  { id: 'phalanges_hand', name: 'Phalanges (Fingers)', position: [0, -1.2, 0], color: '#AED6F1', type: 'bone',
+    info: 'Finger bones - 14 total', visible: true, opacity: 0.9, size: [0.5, 0.8, 0.1] },
+  { id: 'flexor_digitorum', name: 'Flexor Digitorum', position: [0, 0.5, 0.2], color: '#E67E22', type: 'muscle',
+    info: 'Finger flexor muscles', visible: true, opacity: 0.7, size: [0.3, 0.8, 0.2] }
+];
+
+// Foot/Ankle Anatomy  
+const footAnatomy: AnatomyPart[] = [
+  { id: 'talus', name: 'Talus', position: [0, 0.3, 0], color: '#3498DB', type: 'bone',
+    info: 'Ankle bone connecting leg to foot', visible: true, opacity: 0.9, size: [0.3, 0.2, 0.4] },
+  { id: 'calcaneus', name: 'Calcaneus (Heel)', position: [0, -0.2, -0.3], color: '#2980B9', type: 'bone',
+    info: 'Largest foot bone, forms heel', visible: true, opacity: 0.9, size: [0.35, 0.4, 0.5] },
+  { id: 'navicular', name: 'Navicular', position: [0, 0, 0.3], color: '#5DADE2', type: 'bone',
+    info: 'Boat-shaped midfoot bone', visible: true, opacity: 0.9, size: [0.25, 0.15, 0.2] },
+  { id: 'metatarsals', name: 'Metatarsals', position: [0, -0.1, 0.8], color: '#85C1E9', type: 'bone',
+    info: 'Five long bones of the foot', visible: true, opacity: 0.9, size: [0.5, 0.15, 0.7] },
+  { id: 'phalanges_foot', name: 'Phalanges (Toes)', position: [0, -0.15, 1.4], color: '#AED6F1', type: 'bone',
+    info: 'Toe bones - 14 total', visible: true, opacity: 0.9, size: [0.45, 0.1, 0.5] },
+  { id: 'achilles', name: 'Achilles Tendon', position: [0, 0.5, -0.4], color: '#F1C40F', type: 'ligament',
+    info: 'Strongest tendon in the body', visible: true, opacity: 0.8, size: [0.15, 0.6, 0.1] },
+  { id: 'gastrocnemius', name: 'Gastrocnemius', position: [0, 1.2, -0.2], color: '#E74C3C', type: 'muscle',
+    info: 'Calf muscle for plantar flexion', visible: true, opacity: 0.7, size: [0.4, 0.8, 0.3] }
+];
+
+// Thorax/Chest Anatomy
+const thoraxAnatomy: AnatomyPart[] = [
+  { id: 'sternum', name: 'Sternum', position: [0, 0, 0.4], color: '#E8E8E8', type: 'bone',
+    info: 'Breastbone in center of chest', visible: true, opacity: 0.9, size: [0.15, 0.8, 0.1] },
+  { id: 'ribs', name: 'Ribs', position: [0.6, 0, 0], color: '#D0D0D0', type: 'bone',
+    info: 'Twelve pairs protecting organs', visible: true, opacity: 0.9, size: [0.8, 1, 0.6] },
+  { id: 'pectoralis_major', name: 'Pectoralis Major', position: [0.4, 0.2, 0.5], color: '#E74C3C', type: 'muscle',
+    info: 'Large chest muscle', visible: true, opacity: 0.7, size: [0.5, 0.6, 0.3] },
+  { id: 'intercostals', name: 'Intercostal Muscles', position: [0.5, 0, 0.2], color: '#C0392B', type: 'muscle',
+    info: 'Muscles between ribs for breathing', visible: true, opacity: 0.6, size: [0.6, 0.8, 0.15] },
+  { id: 'diaphragm', name: 'Diaphragm', position: [0, -0.6, 0], color: '#A93226', type: 'muscle',
+    info: 'Primary breathing muscle', visible: true, opacity: 0.7, size: [0.9, 0.15, 0.7] }
+];
+
+// Elbow Anatomy
+const elbowAnatomy: AnatomyPart[] = [
+  { id: 'humerus_elbow', name: 'Humerus (Upper)', position: [0, 0.8, 0], color: '#3498DB', type: 'bone',
+    info: 'Upper arm bone', visible: true, opacity: 0.9, size: [0.2, 1, 0.2] },
+  { id: 'radius_elbow', name: 'Radius', position: [-0.15, -0.8, 0], color: '#2980B9', type: 'bone',
+    info: 'Lateral forearm bone', visible: true, opacity: 0.9, size: [0.15, 1, 0.15] },
+  { id: 'ulna_elbow', name: 'Ulna', position: [0.15, -0.8, -0.1], color: '#5DADE2', type: 'bone',
+    info: 'Medial forearm bone with olecranon', visible: true, opacity: 0.9, size: [0.15, 1.1, 0.15] },
+  { id: 'biceps', name: 'Biceps Brachii', position: [0, 0.6, 0.2], color: '#E74C3C', type: 'muscle',
+    info: 'Arm flexor muscle', visible: true, opacity: 0.7, size: [0.25, 0.8, 0.25] },
+  { id: 'triceps', name: 'Triceps', position: [0, 0.5, -0.25], color: '#C0392B', type: 'muscle',
+    info: 'Arm extensor muscle', visible: true, opacity: 0.7, size: [0.25, 0.9, 0.25] },
+  { id: 'ucl', name: 'UCL (Ulnar Collateral)', position: [0.15, 0, -0.05], color: '#F1C40F', type: 'ligament',
+    info: 'Medial elbow ligament', visible: true, opacity: 0.8, size: [0.05, 0.25, 0.05] }
+];
+
+// Hip Anatomy
+const hipAnatomy: AnatomyPart[] = [
+  { id: 'femur_hip', name: 'Femur (Proximal)', position: [0, -0.8, 0], color: '#3498DB', type: 'bone',
+    info: 'Thigh bone with ball joint', visible: true, opacity: 0.9, size: [0.25, 1.5, 0.25] },
+  { id: 'acetabulum', name: 'Acetabulum', position: [0, 0.3, 0], color: '#2980B9', type: 'bone',
+    info: 'Hip socket in pelvis', visible: true, opacity: 0.9, size: [0.5, 0.5, 0.4] },
+  { id: 'femoral_head', name: 'Femoral Head', position: [0, 0.2, 0], color: '#5DADE2', type: 'bone',
+    info: 'Ball of hip joint', visible: true, opacity: 0.9, size: [0.35, 0.35, 0.35] },
+  { id: 'hip_labrum', name: 'Labrum', position: [0, 0.3, 0], color: '#27AE60', type: 'cartilage',
+    info: 'Cartilage rim of hip socket', visible: true, opacity: 0.7, size: [0.55, 0.55, 0.45] },
+  { id: 'gluteus_medius', name: 'Gluteus Medius', position: [-0.4, 0.4, -0.3], color: '#E74C3C', type: 'muscle',
+    info: 'Hip abductor muscle', visible: true, opacity: 0.7, size: [0.4, 0.5, 0.3] },
+  { id: 'hip_flexors', name: 'Hip Flexors', position: [0, 0.3, 0.3], color: '#C0392B', type: 'muscle',
+    info: 'Muscles that flex the hip', visible: true, opacity: 0.7, size: [0.3, 0.6, 0.25] }
+];
+
 interface AnatomyPartMeshProps {
   part: AnatomyPart;
   isSelected: boolean;
@@ -474,12 +587,13 @@ const AnatomyPartMesh = ({ part, isSelected, onClick, animationSpeed, showLabels
 
   const materialProps = {
     color: isSelected ? '#FF6B6B' : hovered ? '#4ECDC4' : part.color,
-    opacity: part.opacity * (hovered ? 1.2 : 1),
-    transparent: true,
-    roughness: 0.4,
-    metalness: 0.1,
+    opacity: Math.min(part.opacity * (hovered ? 1 : 1), 1),
+    transparent: part.opacity < 1,
+    roughness: 0.3,
+    metalness: 0.2,
     emissive: isSelected ? '#FF2222' : hovered ? '#1A4444' : '#000000',
-    emissiveIntensity: isSelected ? 0.2 : hovered ? 0.1 : 0
+    emissiveIntensity: isSelected ? 0.3 : hovered ? 0.15 : 0,
+    side: THREE.DoubleSide
   };
 
   return (
@@ -529,6 +643,16 @@ const AnatomyPartMesh = ({ part, isSelected, onClick, animationSpeed, showLabels
   );
 };
 
+// External GLTF model renderer from Supabase Storage URL
+const ExternalModel = ({ url }: { url: string }) => {
+  const gltf = useGLTF(url) as any;
+  return (
+    <group position={[0, 0, 0]}>
+      <primitive object={gltf.scene} />
+    </group>
+  );
+};
+
 interface AnatomySceneProps {
   anatomy: AnatomyPart[];
   selectedPart: string | null;
@@ -536,9 +660,10 @@ interface AnatomySceneProps {
   animationSpeed: number;
   showLabels: boolean;
   environmentPreset: string;
+  modelUrl?: string | null;
 }
 
-const AnatomyScene = ({ anatomy, selectedPart, onPartSelect, animationSpeed, showLabels, environmentPreset }: AnatomySceneProps) => {
+const AnatomyScene = ({ anatomy, selectedPart, onPartSelect, animationSpeed, showLabels, environmentPreset, modelUrl }: AnatomySceneProps) => {
   const { camera } = useThree();
   
   useEffect(() => {
@@ -552,16 +677,22 @@ const AnatomyScene = ({ anatomy, selectedPart, onPartSelect, animationSpeed, sho
 
   return (
     <>
-      <Environment preset={environmentPreset as any} />
-      <ambientLight intensity={0.4} />
+      <Environment preset={environmentPreset as any} background={false} />
+      <ambientLight intensity={0.6} />
       <directionalLight 
-        position={[10, 10, 5]} 
-        intensity={1.2} 
+        position={[5, 5, 5]} 
+        intensity={1} 
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
+        shadow-camera-far={50}
+        shadow-camera-left={-10}
+        shadow-camera-right={10}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-10}
       />
-      <pointLight position={[-10, -10, -5]} intensity={0.5} color="#4A90E2" />
+      <directionalLight position={[-5, -5, -5]} intensity={0.3} />
+      <pointLight position={[-10, -10, -5]} intensity={0.4} color="#4A90E2" />
       
       <ContactShadows
         opacity={0.4}
@@ -583,16 +714,26 @@ const AnatomyScene = ({ anatomy, selectedPart, onPartSelect, animationSpeed, sho
         maxDistance={15}
       />
       
-      {anatomy.map((part) => (
-        <AnatomyPartMesh
-          key={part.id}
-          part={part}
-          isSelected={selectedPart === part.id}
-          onClick={() => onPartSelect(part.id)}
-          animationSpeed={animationSpeed}
-          showLabels={showLabels}
-        />
-      ))}
+      {modelUrl ? (
+        <Suspense fallback={
+          <Html center>
+            <div className="text-xs px-3 py-2 rounded bg-muted text-foreground">Loading external 3D model...</div>
+          </Html>
+        }>
+          <ExternalModel url={modelUrl} />
+        </Suspense>
+      ) : (
+        anatomy.map((part) => (
+          <AnatomyPartMesh
+            key={part.id}
+            part={part}
+            isSelected={selectedPart === part.id}
+            onClick={() => onPartSelect(part.id)}
+            animationSpeed={animationSpeed}
+            showLabels={showLabels}
+          />
+        ))
+      )}
     </>
   );
 };
@@ -651,14 +792,21 @@ const LayerControl = ({ anatomy, onToggleVisibility, onOpacityChange }: {
 };
 
 export const AnatomyViewer3D = () => {
-  const [selectedRegion, setSelectedRegion] = useState<'spine' | 'knee' | 'shoulder'>('spine');
+  const { hasAccess } = useSubscription();
+  const [selectedRegion, setSelectedRegion] = useState<'spine' | 'knee' | 'shoulder' | 'head' | 'pelvis' | 'hand' | 'foot' | 'thorax' | 'elbow' | 'hip'>('spine');
   const [selectedPart, setSelectedPart] = useState<string | null>(null);
   const [anatomy, setAnatomy] = useState<AnatomyPart[]>(spineAnatomy);
   const [animationSpeed, setAnimationSpeed] = useState(1);
   const [showLabels, setShowLabels] = useState(true);
   const [environmentPreset, setEnvironmentPreset] = useState('city');
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Check if user has premium access (Basic tier or higher)
+  const hasPremiumAccess = hasAccess('basic');
 
   useEffect(() => {
     switch (selectedRegion) {
@@ -671,9 +819,61 @@ export const AnatomyViewer3D = () => {
       case 'shoulder':
         setAnatomy([...shoulderAnatomy]);
         break;
+      case 'head':
+        setAnatomy([...headAnatomy]);
+        break;
+      case 'pelvis':
+        setAnatomy([...pelvisAnatomy]);
+        break;
+      case 'hand':
+        setAnatomy([...handAnatomy]);
+        break;
+      case 'foot':
+        setAnatomy([...footAnatomy]);
+        break;
+      case 'thorax':
+        setAnatomy([...thoraxAnatomy]);
+        break;
+      case 'elbow':
+        setAnatomy([...elbowAnatomy]);
+        break;
+      case 'hip':
+        setAnatomy([...hipAnatomy]);
+        break;
     }
     setSelectedPart(null);
+    setModelUrl(null);
+
+    // Try to load external GLTF/GLB model from Supabase Storage
+    const fetchModel = async () => {
+      try {
+        const bucket = supabase.storage.from('anatomy-models');
+        const base = selectedRegion;
+        const tryFile = async (path: string) => {
+          const { data, error } = await bucket.createSignedUrl(path, 3600);
+          if (!error && data?.signedUrl) return data.signedUrl;
+          return null;
+        };
+        let url = await tryFile(`${base}.glb`);
+        if (!url) url = await tryFile(`${base}.gltf`);
+        if (!url) url = await tryFile(`${base}/${base}.glb`);
+        setModelUrl(url);
+      } catch (e) {
+        setModelUrl(null);
+      }
+    };
+    fetchModel();
   }, [selectedRegion]);
+
+  // Preload model for smoother display when available
+  useEffect(() => {
+    if (modelUrl) {
+      try {
+        // @ts-ignore - drei attaches preload
+        useGLTF.preload(modelUrl);
+      } catch {}
+    }
+  }, [modelUrl]);
 
   const selectedPartData = selectedPart 
     ? anatomy.find(part => part.id === selectedPart)
@@ -693,6 +893,54 @@ export const AnatomyViewer3D = () => {
     setAnatomy(prev => prev.map(part => 
       part.id === partId ? { ...part, opacity } : part
     ));
+  };
+
+  const handleUpload = async (file: File) => {
+    try {
+      setUploading(true);
+      setUploadError(null);
+      const fileName = file.name.toLowerCase();
+      const ext = fileName.endsWith('.gltf') ? 'gltf' : 'glb';
+      const path = `${selectedRegion}.${ext}`;
+      const contentType = ext === 'glb' ? 'model/gltf-binary' : 'model/gltf+json';
+      const { error: upErr } = await supabase.storage
+        .from('anatomy-models')
+        .upload(path, file, { upsert: true, contentType });
+      if (upErr) throw upErr;
+      const { data: signed } = await supabase.storage
+        .from('anatomy-models')
+        .createSignedUrl(path, 3600);
+      setModelUrl(signed?.signedUrl || null);
+    } catch (e: any) {
+      setUploadError(e?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const seedDemo = async () => {
+    try {
+      setUploading(true);
+      setUploadError(null);
+      const { error } = await supabase.functions.invoke('seed-anatomy-models', {
+        body: { regions: [selectedRegion] },
+      });
+      if (error) throw error as any;
+      const exts = ['glb', 'gltf'] as const;
+      for (const ext of exts) {
+        const { data: signed } = await supabase.storage
+          .from('anatomy-models')
+          .createSignedUrl(`${selectedRegion}.${ext}`, 3600);
+        if (signed?.signedUrl) {
+          setModelUrl(signed.signedUrl);
+          break;
+        }
+      }
+    } catch (e: any) {
+      setUploadError(e?.message || 'Seeding failed');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const filteredAnatomy = anatomy.filter(part =>
@@ -727,6 +975,13 @@ export const AnatomyViewer3D = () => {
                   <SelectItem value="spine">Spine & Back</SelectItem>
                   <SelectItem value="knee">Knee Joint</SelectItem>
                   <SelectItem value="shoulder">Shoulder Complex</SelectItem>
+                  <SelectItem value="head">Head & Skull</SelectItem>
+                  <SelectItem value="pelvis">Pelvis & Hip Bone</SelectItem>
+                  <SelectItem value="hand">Hand & Wrist</SelectItem>
+                  <SelectItem value="foot">Foot & Ankle</SelectItem>
+                  <SelectItem value="thorax">Thorax & Chest</SelectItem>
+                  <SelectItem value="elbow">Elbow Joint</SelectItem>
+                  <SelectItem value="hip">Hip Joint</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -774,8 +1029,9 @@ export const AnatomyViewer3D = () => {
           </div>
 
           <Tabs defaultValue="viewer" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="viewer">3D Viewer</TabsTrigger>
+              <TabsTrigger value="zygote">Zygote Body</TabsTrigger>
               <TabsTrigger value="layers">Layer Control</TabsTrigger>
               <TabsTrigger value="info">Information</TabsTrigger>
             </TabsList>
@@ -784,7 +1040,7 @@ export const AnatomyViewer3D = () => {
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 {/* 3D Viewer */}
                 <div className="lg:col-span-3">
-                  <div className="h-[600px] w-full border rounded-lg bg-gradient-to-b from-slate-50 to-white overflow-hidden">
+                  <div className="h-[600px] w-full border rounded-lg bg-gradient-to-b from-background to-muted/20 overflow-hidden">
                     <Suspense fallback={
                       <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-4">
@@ -794,10 +1050,18 @@ export const AnatomyViewer3D = () => {
                       </div>
                     }>
                       <Canvas 
-                        camera={{ position: [0, 0, 8], fov: 45 }}
+                        camera={{ position: [0, 0, 8], fov: 50 }}
                         shadows
-                        gl={{ antialias: true, alpha: true }}
+                        dpr={[1, 2]}
+                        gl={{ 
+                          antialias: true, 
+                          alpha: false,
+                          preserveDrawingBuffer: true,
+                          powerPreference: "high-performance"
+                        }}
                       >
+                        <color attach="background" args={['#1a1a2e']} />
+                        <fog attach="fog" args={['#1a1a2e', 10, 25]} />
                         <AnatomyScene
                           anatomy={anatomy}
                           selectedPart={selectedPart}
@@ -805,10 +1069,35 @@ export const AnatomyViewer3D = () => {
                           animationSpeed={animationSpeed}
                           showLabels={showLabels}
                           environmentPreset={environmentPreset}
+                          modelUrl={modelUrl}
                         />
                       </Canvas>
                     </Suspense>
                   </div>
+                  {!modelUrl && (
+                    <div className="mt-4 p-4 border rounded-lg bg-muted/30">
+                      <p className="text-sm mb-2">No external 3D model found for “{selectedRegion}”. Upload a .glb or .gltf file or load a demo model.</p>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="file"
+                          accept=".glb,.gltf"
+                          onChange={(e) => e.target.files && handleUpload(e.target.files[0])}
+                          disabled={uploading}
+                        />
+                        <Button type="button" variant="outline" size="sm" onClick={seedDemo} disabled={uploading}>
+                          {uploading ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Seeding...
+                            </span>
+                          ) : (
+                            'Load Demo Model'
+                          )}
+                        </Button>
+                      </div>
+                      {uploadError && <p className="text-xs text-destructive mt-2">{uploadError}</p>}
+                    </div>
+                  )}
                   <div className="mt-4 text-center space-y-2">
                     <p className="text-xs text-muted-foreground">
                       🖱️ Click & drag to rotate • 🖱️ Scroll to zoom • 👆 Click structures for details
@@ -873,6 +1162,54 @@ export const AnatomyViewer3D = () => {
                   </div>
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="zygote" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Zygote Body 3D Human Anatomy</span>
+                    {hasPremiumAccess && (
+                      <Badge variant="default" className="ml-2">Premium Features Enabled</Badge>
+                    )}
+                  </CardTitle>
+                  <CardDescription>
+                    Interactive full-body anatomy viewer powered by Zygote Body
+                    {!hasPremiumAccess && (
+                      <span className="block mt-2 text-primary">
+                        • Subscribe to Basic plan (£3.99/month) to unlock ZygoteBody Premium features
+                      </span>
+                    )}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="w-full h-[600px] border rounded-lg overflow-hidden bg-background">
+                    <iframe
+                      src={hasPremiumAccess 
+                        ? "https://www.zygotebody.com/#premium=true" 
+                        : "https://www.zygotebody.com"}
+                      className="w-full h-full"
+                      title="Zygote Body 3D Anatomy Viewer"
+                      allowFullScreen
+                    />
+                  </div>
+                  <div className="mt-4 p-4 bg-muted/30 rounded-lg space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      💡 Use the controls within the Zygote Body viewer to explore detailed 3D human anatomy.
+                      You can rotate, zoom, and toggle different anatomical systems.
+                    </p>
+                    {hasPremiumAccess ? (
+                      <p className="text-sm font-medium text-primary">
+                        ✨ Premium features active: Advanced layers, detailed annotations, and enhanced visualization
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        🔒 Subscribe to access premium ZygoteBody features including advanced anatomical layers and detailed annotations
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="layers" className="space-y-4">

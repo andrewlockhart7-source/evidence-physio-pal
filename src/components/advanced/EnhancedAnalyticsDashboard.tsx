@@ -78,36 +78,14 @@ export const EnhancedAnalyticsDashboard = () => {
         console.error('Analytics sessions error:', sessionsError);
       }
 
-      // Fetch patient sessions for progress tracking - only for assigned patients
-      const { data: patientSessions, error: patientSessionsError } = await supabase
-        .from('patient_sessions')
-        .select(`
-          *,
-          patients!inner(
-            therapist_id,
-            primary_condition
-          )
-        `)
-        .gte('session_date', startDate)
-        .order('session_date', { ascending: true });
-
-      if (patientSessionsError) {
-        console.error('Patient sessions error:', patientSessionsError);
-      }
-
-      // Filter patient sessions for current user's patients
-      const userPatientSessions = patientSessions?.filter(
-        (ps: any) => ps.patients?.therapist_id === user.id
-      ) || [];
-
-      // Process data for charts
-      const processedData = processAnalyticsData(sessions || [], userPatientSessions);
+      // Process data for charts (patient sessions removed)
+      const processedData = processAnalyticsData(sessions || [], []);
       setAnalyticsData(processedData);
 
-      if (!sessions?.length && !userPatientSessions.length) {
+      if (!sessions?.length) {
         toast({
           title: "No Data Available",
-          description: "Record patient sessions to see analytics",
+          description: "Record sessions to see analytics",
         });
       }
 

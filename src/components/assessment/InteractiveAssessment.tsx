@@ -7,6 +7,7 @@ import { AssessmentForm } from "./AssessmentForm";
 import { AssessmentResult } from "./AssessmentResult";
 import { ArrowLeft, FileText, Calculator, CheckCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 interface AssessmentTool {
   id: string;
@@ -32,6 +33,7 @@ export const InteractiveAssessment = ({ tool }: InteractiveAssessmentProps) => {
   const [assessmentData, setAssessmentData] = useState<any>(null);
   const [progress, setProgress] = useState(0);
   const navigate = useNavigate();
+  const { trackAssessmentCompleted } = useActivityTracking();
 
   useEffect(() => {
     switch (currentPhase) {
@@ -51,9 +53,12 @@ export const InteractiveAssessment = ({ tool }: InteractiveAssessmentProps) => {
     setCurrentPhase('assessment');
   };
 
-  const handleCompleteAssessment = (data: any) => {
+  const handleCompleteAssessment = async (data: any) => {
     setAssessmentData(data);
     setCurrentPhase('results');
+    
+    // Track assessment completion
+    await trackAssessmentCompleted();
   };
 
   const handleBackToLibrary = () => {

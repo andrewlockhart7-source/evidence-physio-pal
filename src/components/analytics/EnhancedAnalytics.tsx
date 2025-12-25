@@ -9,6 +9,7 @@ import { useSubscription } from "@/hooks/useSubscription";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, TrendingUp, Users, Clock, Target, Award, CheckCircle } from "lucide-react";
 import { PremiumFeature } from "@/components/subscription/PremiumFeature";
+import { AddSessionForm } from "./AddSessionForm";
 
 interface AnalyticsData {
   totalSessions: number;
@@ -202,6 +203,9 @@ export const EnhancedAnalytics = () => {
 
   return (
     <div className="space-y-6">
+      {/* Add Session Form */}
+      <AddSessionForm />
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

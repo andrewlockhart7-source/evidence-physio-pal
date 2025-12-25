@@ -20,9 +20,9 @@ serve(async (req) => {
     logStep("Function started");
 
     // Validate environment variables
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      logStep("OpenAI API key missing");
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!lovableApiKey) {
+      logStep("Lovable API key missing");
       return new Response(JSON.stringify({ 
         error: 'AI service temporarily unavailable' 
       }), {
@@ -92,29 +92,37 @@ serve(async (req) => {
         break;
     }
 
-    logStep("Making OpenAI API call");
+    logStep("Making Lovable AI API call");
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'Authorization': `Bearer ${lovableApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-2025-04-14',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_completion_tokens: 1500,
+        max_tokens: 1500,
       }),
     });
 
-    logStep("OpenAI API response received", { status: response.status });
+    logStep("Lovable AI API response received", { status: response.status });
 
     if (!response.ok) {
+      if (response.status === 429) {
+        logStep("Rate limit exceeded");
+        throw new Error('Rate limits exceeded, please try again later.');
+      }
+      if (response.status === 402) {
+        logStep("Payment required");
+        throw new Error('Payment required, please add funds to your Lovable AI workspace.');
+      }
       const errorData = await response.json();
-      logStep("OpenAI API error", errorData);
+      logStep("Lovable AI API error", errorData);
       throw new Error(errorData.error?.message || 'Failed to generate AI response');
     }
 

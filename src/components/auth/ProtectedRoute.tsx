@@ -14,7 +14,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   useEffect(() => {
     if (!loading && !user) {
       console.log('ProtectedRoute: User not authenticated, redirecting to /auth');
-      navigate("/auth");
+      navigate("/auth", { replace: true });
     }
   }, [user, loading, navigate]);
 

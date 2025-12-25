@@ -13,18 +13,17 @@ serve(async (req) => {
   }
 
   try {
-    const { 
-      searchTerms = 'physiotherapy physical therapy', 
+    const {
+      searchTerms = 'physiotherapy physical therapy',
       sources = ['pubmed', 'cochrane', 'pedro', 'guidelines'],
-      maxResults = 20 
+      maxResults = 20,
     } = await req.json();
-    
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log(`Starting evidence sync for: ${searchTerms}`);
-    console.log(`Sources: ${sources.join(', ')}`);
+    console.log(`[evidence-sync] Start for terms="${searchTerms}" sources=${sources.join(',')}`);
 
     const results: {
       success: boolean;
@@ -44,102 +43,95 @@ serve(async (req) => {
       success: true,
       sources_processed: [],
       total_articles: 0,
-      errors: []
+      errors: [],
     };
 
-    // Call all integration functions in parallel for speed
-    const integrationPromises = sources.map(async (source) => {
+    // Ensure we don't exceed CF/edge timeouts: cap per-source work and run sequentially
+    const perSourceMax = Math.max(3, Math.min(10, Math.floor(maxResults / Math.max(sources.length, 1)) || 5));
+    const perSourceTimeoutMs = 20000; // 20s per source
+
+    async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+      let timeoutId: number | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms) as unknown as number;
+      });
       try {
-        console.log(`Processing ${source}...`);
-        
-        const functionUrl = `${supabaseUrl}/functions/v1/${source}-integration`;
-        const response = await fetch(functionUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            searchTerms,
-            maxResults: Math.floor(maxResults / sources.length),
-            condition: 'musculoskeletal'
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          return {
-            source,
-            success: true,
-            message: data.message,
-            count: data.articles?.length || data.reviews?.length || data.studies?.length || data.guidelines?.length || 0
-          };
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          return {
-            source,
-            success: false,
-            error: errorData.error || `HTTP ${response.status}`,
-            message: errorData.note || 'Unknown error',
-            count: 0
-          };
-        }
-      } catch (error) {
-        console.error(`Error processing ${source}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          source,
-          success: false,
-          error: errorMessage,
-          message: 'Function call failed',
-          count: 0
-        };
-      }
-    });
-
-    // Wait for all integrations to complete
-    const integrationResults = await Promise.all(integrationPromises);
-
-    // Process results
-    for (const result of integrationResults) {
-      if (result.success) {
-        results.sources_processed.push({
-          source: result.source,
-          success: true,
-          message: result.message,
-          count: result.count
-        });
-        results.total_articles += result.count;
-      } else {
-        results.errors.push({
-          source: result.source,
-          error: result.error || 'Unknown error',
-          message: result.message
-        });
+        return await Promise.race([promise, timeout]);
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
     }
 
-    // Log sync completion (removed system-wide status update as it requires valid UUID)
-    console.log(`Sync completed successfully: ${results.total_articles} articles from ${results.sources_processed.length} sources`);
+    for (const source of sources) {
+      try {
+        console.log(`[evidence-sync] Processing ${source} (max=${perSourceMax})`);
 
-    return new Response(JSON.stringify({
-      ...results,
-      message: `Evidence sync completed. Processed ${results.total_articles} articles from ${results.sources_processed.length} sources.`,
-      timestamp: new Date().toISOString()
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke(`${source}-integration`, {
+            body: {
+              searchTerms,
+              maxResults: perSourceMax,
+              condition: 'musculoskeletal',
+            },
+          }),
+          perSourceTimeoutMs,
+          `${source}-integration`
+        );
 
+        if (error) {
+          console.warn(`[evidence-sync] ${source} returned error`, error?.message || error);
+          results.errors.push({
+            source,
+            error: error.message || 'Invocation error',
+            message: 'Function invocation failed',
+          });
+          continue;
+        }
+
+        const count =
+          (data?.articles?.length as number | undefined) ||
+          (data?.reviews?.length as number | undefined) ||
+          (data?.studies?.length as number | undefined) ||
+          (data?.guidelines?.length as number | undefined) ||
+          0;
+
+        results.sources_processed.push({
+          source,
+          success: true,
+          message: data?.message || 'Completed',
+          count,
+        });
+        results.total_articles += count;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        console.error(`[evidence-sync] ${source} failed: ${msg}`);
+        results.errors.push({ source, error: msg, message: 'Function call failed' });
+      }
+    }
+
+    console.log(
+      `[evidence-sync] Completed: total=${results.total_articles} ok=${results.sources_processed.length} err=${results.errors.length}`
+    );
+
+    return new Response(
+      JSON.stringify({
+        ...results,
+        message: `Evidence sync completed. Processed ${results.total_articles} items from ${results.sources_processed.length} sources.`,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   } catch (error) {
-    console.error('Error in evidence sync:', error);
+    console.error('[evidence-sync] Top-level failure:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ 
-      success: false,
-      error: errorMessage,
-      message: 'Evidence sync failed'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: errorMessage, message: 'Evidence sync failed' }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
   }
 });

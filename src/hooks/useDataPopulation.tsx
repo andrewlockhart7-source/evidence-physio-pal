@@ -8,16 +8,29 @@ export const useDataPopulation = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    checkDataPopulation();
+    // Add a small delay to avoid race conditions with auth
+    const timer = setTimeout(() => {
+      checkDataPopulation();
+    }, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   const checkDataPopulation = async () => {
     try {
-      // Check if database has any data
-      const [{ count: conditionsCount }, { count: evidenceCount }] = await Promise.all([
+      // Check if database has any data with timeout protection
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Database check timeout')), 10000)
+      );
+
+      const dataPromise = Promise.all([
         supabase.from('conditions').select('*', { count: 'exact', head: true }),
         supabase.from('evidence').select('*', { count: 'exact', head: true }),
       ]);
+
+      const [{ count: conditionsCount }, { count: evidenceCount }] = await Promise.race([
+        dataPromise,
+        timeoutPromise
+      ]) as any;
 
       const hasData = (conditionsCount ?? 0) > 0 && (evidenceCount ?? 0) > 0;
       setIsPopulated(hasData);
@@ -28,6 +41,7 @@ export const useDataPopulation = () => {
       }
     } catch (error) {
       console.error('Error checking data population:', error);
+      // Don't crash the app, just mark as not populated
       setIsPopulated(false);
     }
   };

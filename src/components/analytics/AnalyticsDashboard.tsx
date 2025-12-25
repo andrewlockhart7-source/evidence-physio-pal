@@ -8,6 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { Header } from "@/components/Header";
+import { ClinicalAnalytics } from "./ClinicalAnalytics";
 import {
   TrendingUp,
   Users,
@@ -81,7 +83,6 @@ export const AnalyticsDashboard = () => {
       // Fetch basic counts with proper error handling
       const fetchQueries = async () => {
         const queries = [
-          supabase.from('patients').select('id', { count: 'exact' }).eq('therapist_id', user?.id || ''),
           supabase.from('treatment_protocols').select('id', { count: 'exact' }).eq('created_by', user?.id || ''),
           supabase.from('analytics_sessions').select('id', { count: 'exact' }).eq('user_id', user?.id || ''),
           supabase.from('cpd_activities').select('hours_claimed').eq('user_id', user?.id || ''),
@@ -103,7 +104,6 @@ export const AnalyticsDashboard = () => {
       };
 
       const [
-        patientsResult,
         protocolsResult,
         sessionsResult,
         cpdResult,
@@ -145,7 +145,7 @@ export const AnalyticsDashboard = () => {
       }, {} as { [key: string]: number }) || {};
 
       const analyticsData = {
-        totalPatients: patientsResult.count || 0,
+        totalPatients: 0, // Patient management removed
         activeProtocols: protocolsResult.count || 0,
         completedSessions: sessionsResult.count || 0,
         cpdHours: totalCpdHours,
@@ -215,8 +215,11 @@ export const AnalyticsDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center">
+    <div className="min-h-screen">
+      <Header />
+      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6">
+          <div className="text-center">
         <h1 className="text-3xl font-bold mb-2">Analytics Dashboard</h1>
         <p className="text-muted-foreground max-w-2xl mx-auto">
           Track your clinical practice, monitor engagement, and measure your contribution to evidence-based care.
@@ -278,8 +281,11 @@ export const AnalyticsDashboard = () => {
 
       <Tabs defaultValue="overview" className="space-y-4">
         <div className="flex justify-between items-center">
-          <TabsList>
+        <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="clinical">Clinical</TabsTrigger>
+            <TabsTrigger value="engagement">Engagement</TabsTrigger>
+            <TabsTrigger value="professional">Professional</TabsTrigger>
           </TabsList>
           
           <div className="flex gap-2">
@@ -415,56 +421,7 @@ export const AnalyticsDashboard = () => {
         </TabsContent>
 
         <TabsContent value="clinical" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Patient Outcomes Summary</CardTitle>
-                <CardDescription>
-                  Track patient progress and treatment effectiveness
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8">
-                  <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="font-medium mb-2">Clinical Analytics</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Advanced outcome tracking and clinical metrics will be available in the next update.
-                  </p>
-                  <Badge variant="outline">Coming Soon</Badge>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Treatment Effectiveness</CardTitle>
-                <CardDescription>
-                  Monitor protocol success rates and patient satisfaction
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Protocol Adherence</span>
-                    <span className="font-medium">87%</span>
-                  </div>
-                  <Progress value={87} className="h-2" />
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Patient Satisfaction</span>
-                    <span className="font-medium">92%</span>
-                  </div>
-                  <Progress value={92} className="h-2" />
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm">Treatment Goals Met</span>
-                    <span className="font-medium">78%</span>
-                  </div>
-                  <Progress value={78} className="h-2" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <ClinicalAnalytics />
         </TabsContent>
 
         <TabsContent value="engagement" className="space-y-4">
@@ -579,6 +536,8 @@ export const AnalyticsDashboard = () => {
           </div>
         </TabsContent>
       </Tabs>
+        </div>
+      </main>
     </div>
   );
 };

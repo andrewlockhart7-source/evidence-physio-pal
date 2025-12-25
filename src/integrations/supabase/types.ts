@@ -92,13 +92,6 @@ export type Database = {
             referencedRelation: "conditions"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "analytics_sessions_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
         ]
       }
       assessment_tools: {
@@ -430,169 +423,6 @@ export type Database = {
           type?: string
           updated_at?: string
           user_id?: string | null
-        }
-        Relationships: []
-      }
-      patient_access_logs: {
-        Row: {
-          accessed_at: string | null
-          action: string
-          id: string
-          ip_address: unknown | null
-          patient_id: string | null
-          session_id: string | null
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          accessed_at?: string | null
-          action: string
-          id?: string
-          ip_address?: unknown | null
-          patient_id?: string | null
-          session_id?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          accessed_at?: string | null
-          action?: string
-          id?: string
-          ip_address?: unknown | null
-          patient_id?: string | null
-          session_id?: string | null
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "patient_access_logs_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      patient_assignments: {
-        Row: {
-          assigned_at: string
-          assigned_by: string
-          assignment_reason: string | null
-          created_at: string
-          id: string
-          is_active: boolean
-          patient_id: string
-          therapist_id: string
-          updated_at: string
-        }
-        Insert: {
-          assigned_at?: string
-          assigned_by: string
-          assignment_reason?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          patient_id: string
-          therapist_id: string
-          updated_at?: string
-        }
-        Update: {
-          assigned_at?: string
-          assigned_by?: string
-          assignment_reason?: string | null
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          patient_id?: string
-          therapist_id?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      patient_sessions: {
-        Row: {
-          created_at: string
-          duration_minutes: number
-          id: string
-          interventions: string[] | null
-          next_session_date: string | null
-          notes: string | null
-          outcomes: Json | null
-          patient_id: string
-          session_date: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          duration_minutes?: number
-          id?: string
-          interventions?: string[] | null
-          next_session_date?: string | null
-          notes?: string | null
-          outcomes?: Json | null
-          patient_id: string
-          session_date: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          duration_minutes?: number
-          id?: string
-          interventions?: string[] | null
-          next_session_date?: string | null
-          notes?: string | null
-          outcomes?: Json | null
-          patient_id?: string
-          session_date?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "patient_sessions_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      patients: {
-        Row: {
-          created_at: string
-          date_of_birth: string | null
-          first_name: string
-          id: string
-          last_name: string
-          patient_id: string | null
-          primary_condition: string
-          status: string
-          therapist_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          date_of_birth?: string | null
-          first_name: string
-          id?: string
-          last_name: string
-          patient_id?: string | null
-          primary_condition: string
-          status?: string
-          therapist_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          date_of_birth?: string | null
-          first_name?: string
-          id?: string
-          last_name?: string
-          patient_id?: string | null
-          primary_condition?: string
-          status?: string
-          therapist_id?: string
-          updated_at?: string
         }
         Relationships: []
       }
@@ -973,10 +803,7 @@ export type Database = {
         Args: { details?: Json; event_type: string; user_id?: string }
         Returns: undefined
       }
-      check_password_strength: {
-        Args: { password: string }
-        Returns: boolean
-      }
+      check_password_strength: { Args: { password: string }; Returns: boolean }
       check_rate_limit: {
         Args: {
           max_attempts?: number
@@ -986,12 +813,9 @@ export type Database = {
         }
         Returns: boolean
       }
-      get_security_headers: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      get_security_headers: { Args: never; Returns: Json }
       get_user_healthcare_status: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           approved_for_access: boolean
           healthcare_role: string
@@ -999,14 +823,8 @@ export type Database = {
           license_verified: boolean
         }[]
       }
-      is_admin: {
-        Args: { user_id?: string }
-        Returns: boolean
-      }
-      is_verified_admin: {
-        Args: { user_id?: string }
-        Returns: boolean
-      }
+      is_admin: { Args: { user_id?: string }; Returns: boolean }
+      is_verified_admin: { Args: { user_id?: string }; Returns: boolean }
       secure_assign_healthcare_role: {
         Args: {
           department?: string
@@ -1016,10 +834,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      update_subscription_analytics: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      update_subscription_analytics: { Args: never; Returns: undefined }
       update_user_activity_stat: {
         Args: { increment_value?: number; stat_type: string }
         Returns: undefined

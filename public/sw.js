@@ -35,13 +35,26 @@ self.addEventListener('fetch', (event) => {
   const isCoreAsset = ['script', 'style', 'worker'].includes(req.destination);
   const url = new URL(req.url);
 
-  // Always bypass cache for auth callback to avoid stale app shell during login
-  if (isNavigation && url.pathname.startsWith('/auth/callback')) {
-    event.respondWith(fetch(req));
+  // For navigation requests (page loads), always serve index.html for SPA routing
+  if (isNavigation) {
+    event.respondWith(
+      fetch(req)
+        .then((response) => {
+          // If server returns 404, serve index.html instead for client-side routing
+          if (response.status === 404) {
+            return caches.match('/').then(cached => cached || fetch('/'));
+          }
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+          return response;
+        })
+        .catch(() => caches.match('/').then(cached => cached || fetch('/')))
+    );
     return;
   }
 
-  if (isNavigation || isCoreAsset) {
+  // Network-first for core assets
+  if (isCoreAsset) {
     event.respondWith(
       fetch(req)
         .then((response) => {
@@ -49,7 +62,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
           return response;
         })
-        .catch(() => caches.match(req).then((res) => res || caches.match('/')))
+        .catch(() => caches.match(req))
     );
     return;
   }

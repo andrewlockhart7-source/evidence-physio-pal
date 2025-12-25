@@ -2,6 +2,7 @@ import { useLocation, Link } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Home, AlertTriangle } from "lucide-react";
+import { Header } from "@/components/Header";
 
 const NotFound = () => {
   const location = useLocation();
@@ -14,8 +15,10 @@ const NotFound = () => {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center space-y-6 p-8">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <div className="text-center space-y-6 p-8">
         <div className="space-y-4">
           <AlertTriangle className="h-16 w-16 mx-auto text-warning" />
           <h1 className="text-4xl font-bold text-foreground">404</h1>
@@ -30,6 +33,7 @@ const NotFound = () => {
             Return to Home
           </Link>
         </Button>
+        </div>
       </div>
     </div>
   );

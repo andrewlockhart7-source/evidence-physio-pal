@@ -1,14 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileText, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 export const ProtocolDataPopulator = () => {
   const [isPopulating, setIsPopulating] = useState(false);
+  const { user } = useAuth();
 
+  // Prevent navigation during population
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isPopulating) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isPopulating]);
   // Basic schema validation for protocol JSON
   const validateProtocol = (data: any) => {
     const required = [
@@ -26,116 +40,60 @@ export const ProtocolDataPopulator = () => {
   };
   const [populatedCount, setPopulatedCount] = useState(0);
 
-  const generateTreatmentProtocol = async (condition: any) => {
+  const generateTreatmentProtocol = async (condition: any, existingId?: string) => {
     try {
-      const response = await supabase.functions.invoke('ai-chat', {
-        body: {
-          messages: [{
-            role: 'user',
-            content: `Create a detailed evidence-based treatment protocol for ${condition.name}. Include:
-            
-            1. Protocol name (max 100 chars)
-            2. Detailed description (2-3 paragraphs)
-            3. Step-by-step protocol with specific exercises/interventions (return as JSON array)
-            4. Duration in weeks (number)
-            5. Frequency per week (number)
-            6. Contraindications (array of strings)
-            7. Precautions (array of strings)
-            8. Expected outcomes (detailed paragraph)
-            
-            Return ONLY a valid JSON object with these exact keys: name, description, protocol_steps, duration_weeks, frequency_per_week, contraindications, precautions, expected_outcomes
-            
-            Do not include any markdown formatting, code blocks, or explanatory text. Return only the raw JSON object.`
-          }],
-          specialty: 'physiotherapy'
-        }
+      const { data, error } = await supabase.functions.invoke('generate-protocol-json', {
+        body: { condition: { id: condition.id, name: condition.name } },
       });
-
-      if (response.error) throw response.error;
-
-      try {
-        // Clean the AI response - remove markdown code blocks if present
-        let cleanedResponse = response.data.response.trim();
-        
-        // Remove markdown JSON code blocks
-        if (cleanedResponse.startsWith('```json')) {
-          cleanedResponse = cleanedResponse.replace(/^```json\s*\n/, '').replace(/\n```$/, '');
-        } else if (cleanedResponse.startsWith('```')) {
-          cleanedResponse = cleanedResponse.replace(/^```\s*\n/, '').replace(/\n```$/, '');
+      if (error) {
+        const msg = (error as any)?.message?.toString().toLowerCase() || '';
+        if (msg.includes('429') || msg.includes('rate limit')) {
+          toast.error('OpenAI rate limit exceeded. Please wait a moment and try again.');
+          throw new Error('RATE_LIMIT');
         }
-        
-        let protocolData = JSON.parse(cleanedResponse);
-        const validation = validateProtocol(protocolData);
-        if (!validation.valid) throw new Error(validation.reason || 'Invalid protocol schema');
-        
-        const { error: insertError } = await supabase
-          .from('treatment_protocols')
-          .insert({
-            name: protocolData.name,
-            description: protocolData.description,
-            condition_id: condition.id,
-            protocol_steps: protocolData.protocol_steps,
-            duration_weeks: protocolData.duration_weeks,
-            frequency_per_week: protocolData.frequency_per_week,
-            contraindications: protocolData.contraindications,
-            precautions: protocolData.precautions,
-            expected_outcomes: protocolData.expected_outcomes,
-            created_by: null, // System generated
-            is_validated: true
-          });
-
-        if (insertError) throw insertError;
-        
-        return true;
-      } catch (parseError) {
-        console.warn('Parse/validation failed for', condition.name, parseError);
-        // Retry once with a strict format-only prompt
-        try {
-          const retry = await supabase.functions.invoke('ai-chat', {
-            body: {
-              messages: [{
-                role: 'user',
-                content: `Return ONLY a valid JSON object with keys: name, description, protocol_steps, duration_weeks, frequency_per_week, contraindications, precautions, expected_outcomes. No markdown, no code fences, no commentary. Ensure protocol_steps is an array, duration_weeks and frequency_per_week are numbers. Condition: ${condition.name}`
-              }],
-              specialty: 'physiotherapy'
-            }
-          });
-          if (retry.error) throw retry.error;
-
-          let cleaned = (retry.data.response || '').trim();
-          if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json\s*\n/, '').replace(/\n```$/, '');
-          else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```\s*\n/, '').replace(/\n```$/, '');
-
-          const retriedData = JSON.parse(cleaned);
-          const valid2 = validateProtocol(retriedData);
-          if (!valid2.valid) throw new Error(valid2.reason || 'Invalid protocol schema after retry');
-
-          const { error: insertError2 } = await supabase
-            .from('treatment_protocols')
-            .insert({
-              name: retriedData.name,
-              description: retriedData.description,
-              condition_id: condition.id,
-              protocol_steps: retriedData.protocol_steps,
-              duration_weeks: retriedData.duration_weeks,
-              frequency_per_week: retriedData.frequency_per_week,
-              contraindications: retriedData.contraindications,
-              precautions: retriedData.precautions,
-              expected_outcomes: retriedData.expected_outcomes,
-              created_by: null,
-              is_validated: true
-            });
-
-          if (insertError2) throw insertError2;
-          return true;
-        } catch (retryError) {
-          console.error('Retry failed for', condition.name, retryError);
-          toast.error(`Failed to parse AI response for ${condition.name}`);
-          return false;
+        if (msg.includes('401') || msg.includes('invalid') || msg.includes('api key')) {
+          toast.error('Invalid OpenAI API key. Please check your configuration.');
+          throw new Error('API_KEY_ERROR');
         }
+        throw error;
       }
-    } catch (error) {
-      console.error('Error generating protocol for', condition.name, error);
+
+      const protocolData = data?.protocol;
+      if (!protocolData) throw new Error('No protocol returned');
+
+      const validation = validateProtocol(protocolData);
+      if (!validation.valid) throw new Error(validation.reason || 'Invalid protocol schema');
+
+      const protocolPayload = {
+        name: protocolData.name,
+        description: protocolData.description,
+        condition_id: condition.id,
+        protocol_steps: protocolData.protocol_steps,
+        duration_weeks: protocolData.duration_weeks,
+        frequency_per_week: protocolData.frequency_per_week,
+        contraindications: protocolData.contraindications,
+        precautions: protocolData.precautions,
+        expected_outcomes: protocolData.expected_outcomes,
+        created_by: user?.id || null,
+        is_validated: false,
+      };
+
+      let upsertError;
+      if (existingId) {
+        ({ error: upsertError } = await supabase
+          .from('treatment_protocols')
+          .update(protocolPayload)
+          .eq('id', existingId));
+      } else {
+        ({ error: upsertError } = await supabase
+          .from('treatment_protocols')
+          .insert(protocolPayload));
+      }
+
+      if (upsertError) throw upsertError;
+      return true;
+    } catch (err) {
+      console.error('Error generating protocol for', condition.name, err);
       return false;
     }
   };
@@ -154,29 +112,62 @@ export const ProtocolDataPopulator = () => {
       if (conditionsError) throw conditionsError;
 
       let successCount = 0;
+      let failedCount = 0;
       
-      for (const condition of conditions) {
-        // Check if protocol already exists
-        const { data: existing } = await supabase
+      // Process conditions in batches of 5 for faster generation
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < conditions.length; i += BATCH_SIZE) {
+        const batch = conditions.slice(i, i + BATCH_SIZE);
+        
+        // Get existing protocols for this batch
+        const conditionIds = batch.map(c => c.id);
+        const { data: existingProtocols } = await supabase
           .from('treatment_protocols')
-          .select('id')
-          .eq('condition_id', condition.id)
-          .single();
-
-        if (!existing) {
-          console.log(`Generating protocol for: ${condition.name}`);
-          const success = await generateTreatmentProtocol(condition);
-          if (success) {
+          .select('id, condition_id')
+          .in('condition_id', conditionIds);
+        
+        const existingMap = new Map(existingProtocols?.map(p => [p.condition_id, p.id]) || []);
+        
+        // Process batch in parallel
+        const results = await Promise.allSettled(
+          batch.map(condition => {
+            const existingId = existingMap.get(condition.id);
+            console.log(`${existingId ? 'Updating' : 'Generating'} protocol for: ${condition.name}`);
+            return generateTreatmentProtocol(condition, existingId);
+          })
+        );
+        
+        // Count successes and failures and detect errors
+        let shouldStop = false;
+        results.forEach(result => {
+          if (result.status === 'fulfilled' && result.value) {
             successCount++;
-            setPopulatedCount(successCount);
+          } else {
+            failedCount++;
+            const reason: any = (result as PromiseRejectedResult).reason;
+            if (reason?.message === 'RATE_LIMIT' || reason?.message === 'API_KEY_ERROR') {
+              shouldStop = true;
+            }
           }
-          
-          // Add delay to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        });
+        
+        setPopulatedCount(successCount);
+        
+        if (shouldStop) {
+          break;
+        }
+        
+        // Small delay between batches to avoid rate limits
+        if (i + BATCH_SIZE < conditions.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
-      toast.success(`Successfully generated ${successCount} treatment protocols!`);
+      if (failedCount > 0) {
+        toast.success(`Generated ${successCount} protocols (${failedCount} failed)`);
+      } else {
+        toast.success(`Successfully generated ${successCount} treatment protocols!`);
+      }
     } catch (error) {
       console.error('Error populating protocols:', error);
       toast.error('Failed to populate protocols');

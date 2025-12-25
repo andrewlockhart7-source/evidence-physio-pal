@@ -64,8 +64,7 @@ Return as JSON array with this structure:
           },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 2000, // Reduced from 3000
-        temperature: 0.7
+        max_completion_tokens: 2000
       }),
       signal: AbortSignal.timeout(25000) // 25 second timeout
     });
